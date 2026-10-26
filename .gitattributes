@@ -1,0 +1,4 @@
+# Sheets are real spratconvert output whose string lengths count bytes, and the
+# tests load the example's: never convert their line endings (Windows checkouts
+# would add \r).
+*.sprat -text

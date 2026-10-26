@@ -1,0 +1,4 @@
+# Leaks of the system libraries SDL loads to open the offscreen window and the GPU renderer
+# (D-Bus, the GL driver), all rooted in the test's renderer setup. None are sprat-sdl's.
+leak:create_renderer
+leak:libdbus-1.so

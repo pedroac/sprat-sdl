@@ -1,0 +1,18 @@
+fps 10
+animation "run"
+- frame "hero/run_01.png"
+- frame "hero/run_02.png"
+- frame "hero/run_03.png"
+- frame "hero/run_04.png"
+- frame "hero/run_05.png"
+- frame "hero/run_06.png"
+animation "run-left" alias "run" flip h
+animation "spin" 12
+- frame "coin/spin_01.png"
+- frame "coin/spin_02.png"
+- frame "coin/spin_03.png"
+- frame "coin/spin_04.png"
+- frame "coin/spin_05.png"
+- frame "coin/spin_06.png"
+- frame "coin/spin_07.png"
+- frame "coin/spin_08.png"

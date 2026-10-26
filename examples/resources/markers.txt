@@ -1,0 +1,59 @@
+# Default pivot: the coin frames turn around their center
+- marker "pivot" point 12,12
+
+# Hero: pivot at the feet, a hand to hold items, and a hitbox
+path "hero/run_01.png"
+- marker "pivot" point 24,44
+- marker "hand" point 24,30
+- marker "hitbox" rectangle 16,4 16,40
+path "hero/run_02.png"
+- marker "pivot" point 24,44
+- marker "hand" point 24,30
+- marker "hitbox" rectangle 16,4 16,40
+path "hero/run_03.png"
+- marker "pivot" point 24,44
+- marker "hand" point 24,30
+- marker "hitbox" rectangle 16,4 16,40
+path "hero/run_04.png"
+- marker "pivot" point 24,44
+- marker "hand" point 24,30
+- marker "hitbox" rectangle 16,4 16,40
+path "hero/run_05.png"
+- marker "pivot" point 24,44
+- marker "hand" point 24,30
+- marker "hitbox" rectangle 16,4 16,40
+path "hero/run_06.png"
+- marker "pivot" point 24,44
+- marker "hand" point 24,30
+- marker "hitbox" rectangle 16,4 16,40
+
+# Sword: held by the grip, cutting with the blade
+path "items/sword.png"
+- marker "pivot" point 6,50
+- marker "blade" polygon 6,0 10,6 10,40 3,40 3,6
+
+# Coins: a hitbox as round as the coin facing front, whichever way it turns
+path "coin/spin_01.png"
+- marker "pivot" point 12,12
+- marker "hitbox" circle 12,12 10
+path "coin/spin_02.png"
+- marker "pivot" point 12,12
+- marker "hitbox" circle 12,12 10
+path "coin/spin_03.png"
+- marker "pivot" point 12,12
+- marker "hitbox" circle 12,12 10
+path "coin/spin_04.png"
+- marker "pivot" point 12,12
+- marker "hitbox" circle 12,12 10
+path "coin/spin_05.png"
+- marker "pivot" point 12,12
+- marker "hitbox" circle 12,12 10
+path "coin/spin_06.png"
+- marker "pivot" point 12,12
+- marker "hitbox" circle 12,12 10
+path "coin/spin_07.png"
+- marker "pivot" point 12,12
+- marker "hitbox" circle 12,12 10
+path "coin/spin_08.png"
+- marker "pivot" point 12,12
+- marker "hitbox" circle 12,12 10

@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+          - os: windows-latest
+          # 32-bit, where size_t and pointers are 32 bits wide
+          - os: windows-latest
+            cmake_args: -A Win32
+          - os: macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL build dependencies
+        if: runner.os == 'Linux'
+        run: >
+          sudo apt-get update && sudo apt-get install -y
+          libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev
+          libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev libegl1-mesa-dev
+          libgl1-mesa-dev libgles2-mesa-dev libdrm-dev libgbm-dev libudev-dev
+          libgl1-mesa-dri libegl-mesa0
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -DBUILD_TESTING=ON
+          -DSPRAT_SDL_SANITIZE=${{ runner.os == 'Linux' && 'ON' || 'OFF' }}
+          -DCMAKE_BUILD_TYPE=Debug
+          ${{ matrix.cmake_args }}
+
+      - name: Build
+        run: cmake --build build --config Debug --parallel
+
+      # Linux renders the tests with Mesa's OpenGL on SDL's offscreen video driver, so every
+      # case is checked; elsewhere the software renderer may stand in.
+      - name: Test
+        env:
+          SPRAT_TEST_REQUIRE_HARDWARE: ${{ runner.os == 'Linux' && '1' || '' }}
+        run: ctest --test-dir build -C Debug --output-on-failure
+
+  # WebAssembly, with SDL3 downloaded and built by Emscripten. The tests run in Node, reading
+  # the example's files straight from the checkout, on the software renderer.
+  emscripten:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mymindstorm/setup-emsdk@v14
+
+      - name: Configure
+        run: >
+          emcmake cmake -S . -B build -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug
+          "-DCMAKE_EXE_LINKER_FLAGS=-sNODERAWFS=1 -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=1"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        working-directory: build/bin
+        run: node test_sprat_sdl.js
