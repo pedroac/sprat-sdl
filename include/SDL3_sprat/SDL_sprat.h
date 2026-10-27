@@ -71,7 +71,7 @@ extern "C" {
  *
  * \since This macro is available since sprat-sdl 0.1.0.
  */
-#define SDL_SPRAT_MINOR_VERSION   1
+#define SDL_SPRAT_MINOR_VERSION   2
 
 /**
  * The current micro (or patchlevel) version of sprat-sdl headers.
@@ -141,6 +141,31 @@ typedef enum SPRAT_SliceMode
 } SPRAT_SliceMode;
 
 /**
+ * How an animation plays: sprat-cli's `loop`, `once`, `pingpong` or
+ * `once-pingpong`.
+ *
+ * The values are flags: SPRAT_LOOPMODE_ONCE plays one pass and stops, and
+ * SPRAT_LOOPMODE_PINGPONG walks the frames back after the last one, without
+ * repeating the frames at either end. For frames 0 1 2:
+ *
+ * - SPRAT_LOOPMODE_REPEAT plays 0 1 2, 0 1 2, ...
+ * - SPRAT_LOOPMODE_ONCE plays 0 1 2, stopping on 2.
+ * - SPRAT_LOOPMODE_PINGPONG plays 0 1 2 1, 0 1 2 1, ...
+ * - SPRAT_LOOPMODE_ONCE_PINGPONG plays 0 1 2 1 0, stopping on 0.
+ *
+ * \since This enum is available since sprat-sdl 0.2.0.
+ *
+ * \sa SPRAT_AnimationPlayer
+ */
+typedef enum SPRAT_LoopMode
+{
+    SPRAT_LOOPMODE_REPEAT = 0,          /**< repeat forward */
+    SPRAT_LOOPMODE_ONCE = 1,            /**< play one pass and stop on the last frame */
+    SPRAT_LOOPMODE_PINGPONG = 2,        /**< play forward then backward, repeating */
+    SPRAT_LOOPMODE_ONCE_PINGPONG = (SPRAT_LOOPMODE_ONCE | SPRAT_LOOPMODE_PINGPONG) /**< play forward then backward once, stopping on the first frame */
+} SPRAT_LoopMode;
+
+/**
  * A named shape attached to a frame: its pivot, a hitbox, a hand, a spawn
  * point...
  *
@@ -205,7 +230,9 @@ typedef struct SPRAT_Frame
  * A sequence of frames played at a fixed rate.
  *
  * An alias is already resolved: `run-left`, an alias of `run` with `flip h`,
- * has `run`'s frames (the same array) and a flip of SDL_FLIP_HORIZONTAL.
+ * has `run`'s frames (the same array) and loop mode, and a flip of
+ * SDL_FLIP_HORIZONTAL. Sheets written before loop modes (`sprat-raw 1`) load
+ * with SPRAT_LOOPMODE_REPEAT.
  *
  * \since This struct is available since sprat-sdl 0.1.0.
  *
@@ -219,6 +246,7 @@ typedef struct SPRAT_Animation
     const int *frames;              /**< indexes into the sheet's frames, in play order */
     int num_frames;                 /**< number of frame indexes, may be 0 */
     SDL_FlipMode flip;              /**< the flip the animation is played with */
+    SPRAT_LoopMode loop_mode;       /**< how the animation plays (since sprat-sdl 0.2.0) */
 } SPRAT_Animation;
 
 /**
@@ -266,6 +294,18 @@ typedef struct SPRAT_Sheet
  * nothing, so copy it or drop it freely. Its fields are yours to read and
  * set, `time` included.
  *
+ * SPRAT_InitAnimationPlayer() copies the animation's loop mode into the
+ * player's `loop_mode`; set it to play the animation another way:
+ *
+ * ```c
+ * SPRAT_InitAnimationPlayer(&attack, SPRAT_GetAnimationFromName(sheet, "attack"));
+ * attack.loop_mode = SPRAT_LOOPMODE_ONCE;
+ * ```
+ *
+ * `time` covers one pass of the animation: `num_frames / fps` seconds, or
+ * with ping-pong and two frames or more, `(2 * num_frames - 2) / fps`
+ * (`(2 * num_frames - 1) / fps` played once).
+ *
  * \since This struct is available since sprat-sdl 0.1.0.
  *
  * \sa SPRAT_InitAnimationPlayer
@@ -274,10 +314,10 @@ typedef struct SPRAT_Sheet
 typedef struct SPRAT_AnimationPlayer
 {
     const SPRAT_Animation *animation; /**< the animation played, NULL for none */
-    float time;                     /**< seconds into the animation, from 0 to its duration (num_frames / fps) */
+    float time;                     /**< seconds into one pass of the animation, from 0 to its duration */
     float speed;                    /**< playback rate: 1.0f plays at the animation's fps, negative plays in reverse */
     bool playing;                   /**< true when SPRAT_UpdateAnimation() advances the time */
-    bool loop;                      /**< true to wrap around at the end, false to stop on the last frame */
+    SPRAT_LoopMode loop_mode;       /**< how the animation plays, the animation's own by default (since sprat-sdl 0.2.0; it replaces `bool loop`) */
 } SPRAT_AnimationPlayer;
 
 /**
@@ -655,8 +695,8 @@ extern SDL_DECLSPEC bool SDLCALL SPRAT_RenderFrame9Grid(SDL_Renderer *renderer, 
 extern SDL_DECLSPEC const SPRAT_Animation * SDLCALL SPRAT_GetAnimationFromName(const SPRAT_Sheet *sheet, const char *name);
 
 /**
- * Set up a player for an animation: playing, looping, at speed 1.0f, from its
- * first frame.
+ * Set up a player for an animation: playing from its first frame, at speed
+ * 1.0f, with the animation's loop mode.
  *
  * \param player the player to set up.
  * \param animation the animation to play, or NULL to play nothing.
@@ -673,9 +713,9 @@ extern SDL_DECLSPEC void SDLCALL SPRAT_InitAnimationPlayer(SPRAT_AnimationPlayer
  * Advance a playing animation by a number of seconds, scaled by its speed.
  *
  * Time only moves while you update it, so pausing the game, slow motion or a
- * fixed time step apply to animations too. A looping animation's time wraps
- * around. A non-looping one stops on its last frame, or on its first when
- * playing in reverse. A step that is not finite is ignored.
+ * fixed time step apply to animations too. A repeating animation's time wraps
+ * around. One with SPRAT_LOOPMODE_ONCE stops at the end of its pass, or at its
+ * start when playing in reverse. A step that is not finite is ignored.
  *
  * \param player the player.
  * \param seconds the time elapsed, e.g. a difference of SDL_GetTicksNS() / 1e9.
@@ -745,11 +785,11 @@ extern SDL_DECLSPEC void SDLCALL SPRAT_PauseAnimation(SPRAT_AnimationPlayer *pla
 extern SDL_DECLSPEC void SDLCALL SPRAT_ResumeAnimation(SPRAT_AnimationPlayer *player);
 
 /**
- * Query whether a non-looping animation reached its end in the direction it
- * plays.
+ * Query whether an animation played with SPRAT_LOOPMODE_ONCE reached the end
+ * of its pass in the direction it plays.
  *
  * \param player the player.
- * \returns true when the animation is finished; looping animations never
+ * \returns true when the animation is finished; repeating animations never
  *          finish.
  *
  * \threadsafety It is safe to call this function from any thread.
@@ -761,9 +801,10 @@ extern SDL_DECLSPEC bool SDLCALL SPRAT_IsAnimationFinished(const SPRAT_Animation
 /**
  * Get the frame an animation shows now.
  *
- * Frame k of the animation covers the times [k / fps, (k + 1) / fps), or
+ * Step k of a pass covers the times [k / fps, (k + 1) / fps), or
  * (k / fps, (k + 1) / fps] in reverse, so playing from either end shows the
- * frame at that end first.
+ * frame at that end first. With ping-pong, the steps past the last frame walk
+ * the frames back.
  *
  * \param player the player.
  * \returns an index into the sheet's frames, or -1 when there is none.

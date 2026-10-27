@@ -73,7 +73,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
 
 ## Building
 
-sprat-sdl needs SDL 3.4 or newer and sprat-lib 0.6 or newer. With CMake,
+sprat-sdl needs SDL 3.4 or newer and sprat-lib 0.7 or newer. With CMake,
 `sprat-sdl::sprat-sdl` brings SDL3 along:
 
 ```cmake
@@ -190,10 +190,12 @@ typedef struct SPRAT_Sheet
   (`w`, `h`), the trimmed `content` region inside it, the `pivot`, the
   nine-slice insets (`slice`) and the frame's `markers`. Frame geometry is in
   original-image pixels, scaled to atlas pixels, with Y pointing down.
-- **Animations** list frame indexes in play order, with an `fps` and the
-  `SDL_FlipMode` they are played with. Aliases are already resolved: `run-left`,
-  an alias of `run` with `flip h`, has `run`'s frames (the same array, not a
-  copy) and `flip` set to `SDL_FLIP_HORIZONTAL`. An animation may have no frames.
+- **Animations** list frame indexes in play order, with an `fps`, and the
+  `SDL_FlipMode` and `SPRAT_LoopMode` they are played with. Aliases are already
+  resolved: `run-left`, an alias of `run` with `flip h`, has `run`'s frames (the
+  same array, not a copy) and `loop_mode`, and `flip` set to
+  `SDL_FLIP_HORIZONTAL`. Sheets written before loop modes (`sprat-raw 1`) load
+  with `SPRAT_LOOPMODE_REPEAT`. An animation may have no frames.
 - **Names**: a frame's `name` is its file's basename and can repeat across
   folders; its `path` is unique. `SPRAT_GetFrameFromName()` takes either: it
   matches the path first, then a name that only one frame has, and returns -1
@@ -266,14 +268,15 @@ returns it by name, or `NULL` when there is none. Playing it takes a
 typedef struct SPRAT_AnimationPlayer
 {
     const SPRAT_Animation *animation;   /* the animation played, NULL for none */
-    float time;                         /* seconds into the animation, from 0 to num_frames / fps */
+    float time;                         /* seconds into one pass of the animation, from 0 to its duration */
     float speed;                        /* 1.0f plays at the animation's fps, negative plays in reverse */
     bool playing;                       /* advanced by SPRAT_UpdateAnimation() */
-    bool loop;                          /* wrap around at the end, otherwise stop on the last frame */
+    SPRAT_LoopMode loop_mode;           /* how the animation plays, the animation's own by default */
 } SPRAT_AnimationPlayer;
 ```
 
-`SPRAT_InitAnimationPlayer()` sets one up playing, looping, at speed `1.0f`; it
+`SPRAT_InitAnimationPlayer()` sets one up playing from the start, at speed
+`1.0f`, with the animation's loop mode; it
 allocates nothing, so copy it or drop it freely. Call
 `SPRAT_UpdateAnimation(&player, seconds)` once per frame, with the time since
 the last one (a difference of `SDL_GetTicksNS()` divided by
@@ -284,10 +287,31 @@ slow motion or a fixed time step apply to animations too.
 playing.
 
 A negative `speed` plays in reverse, and `SPRAT_PlayAnimation()` then starts
-from the last frame. Set `loop` to `false` to play once: the player stops on the
-last frame it reaches (the first when reversed) and
-`SPRAT_IsAnimationFinished()` becomes true. The fields are yours to read and
-set, `time` included.
+from the end of the pass: the last frame, or with ping-pong the one the pass
+ends on. The fields are yours to read and set, `time` included.
+
+The player plays the loop mode the sheet gave the animation (sprat-cli's
+`loop`, `once`, `pingpong` or `once-pingpong`):
+
+| `loop_mode` | Frames 0 1 2 play as |
+| --- | --- |
+| `SPRAT_LOOPMODE_REPEAT` | 0 1 2, 0 1 2, ... |
+| `SPRAT_LOOPMODE_ONCE` | 0 1 2, stopping on 2 |
+| `SPRAT_LOOPMODE_PINGPONG` | 0 1 2 1, 0 1 2 1, ... |
+| `SPRAT_LOOPMODE_ONCE_PINGPONG` | 0 1 2 1 0, stopping on 0 |
+
+`time` covers one pass, so a ping-pong pass of two frames or more lasts
+`(2 * num_frames - 2) / fps` (`(2 * num_frames - 1) / fps` once); a single frame
+lasts `1 / fps` in every mode. A `SPRAT_LOOPMODE_ONCE` animation stops at
+the end of its pass (at its start when reversed) and
+`SPRAT_IsAnimationFinished()` becomes true. The values are flags, so test
+`loop_mode & SPRAT_LOOPMODE_ONCE`. To play an animation another way, set the
+player's `loop_mode`; the sheet's animation is left as it is:
+
+```c
+SPRAT_InitAnimationPlayer(&attack, SPRAT_GetAnimationFromName(sheet, "attack"));
+attack.loop_mode = SPRAT_LOOPMODE_ONCE;
+```
 
 `SPRAT_GetAnimationFrame()` gives the frame shown now, an index into
 `sheet->frames`. `SPRAT_RenderAnimation()` renders it with the animation's
@@ -415,8 +439,9 @@ that allocation and stays valid until `SPRAT_DestroySheet()`.
 
 [`examples/sprite_sheet.c`](examples/sprite_sheet.c), written with SDL's main
 callbacks, renders every frame of the example sheet (most of them stored turned
-in the atlas), plays the `run`, `run-left` and `spin` animations, resizes a
-nine-slice panel, and lets you run a hero holding a sword at its `hand` marker.
+in the atlas), plays the `run`, `run-left`, `spin` and `spin-pingpong`
+animations, resizes a nine-slice panel, and lets you run a hero holding a sword
+at its `hand` marker.
 The hero, the sword and the coins are `SPRAT_Sprite`s, rendered and collided
 alike.
 The hero picks up the coins its `hitbox` runs into, or that the sword's `blade`
@@ -454,8 +479,6 @@ try a given renderer, set `SDL_RENDER_DRIVER` (`opengl`, `vulkan`, `gpu`,
   name any file. Load such a sheet without a renderer, check each
   `sheet->atlases[i].path` with sprat-lib's `sprat_path_is_safe()`, and load the
   atlases yourself.
-- The sheet format has no loop setting yet: every player loops until you set
-  `loop` to `false`.
 
 ## License
 

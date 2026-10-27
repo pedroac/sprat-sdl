@@ -127,7 +127,7 @@ static void test_load_example(void)
 {
     SPRAT_Sheet *sheet = SPRAT_LoadSheet(NULL, SPRAT_SDL_EXAMPLE_SHEET);
     const SPRAT_Frame *sword, *hero, *panel;
-    const SPRAT_Animation *run, *left;
+    const SPRAT_Animation *run, *left, *pingpong;
     int run01;
 
     CHECK(sheet != NULL);
@@ -141,7 +141,7 @@ static void test_load_example(void)
     CHECK_INT(sheet->atlases[0].h, 134);
     CHECK(sheet->atlases[0].texture == NULL);   /* no renderer, no textures */
     CHECK_INT(sheet->num_frames, 16);
-    CHECK_INT(sheet->num_animations, 3);
+    CHECK_INT(sheet->num_animations, 4);
     CHECK_FLOAT(sheet->scale, 1.0);
 
     /* sprite 0 56 12 ... rotation 90, trim 0, pivot 6,50 */
@@ -196,8 +196,48 @@ static void test_load_example(void)
         CHECK(left->frames == run->frames);
         CHECK_INT(left->num_frames, 6);
         CHECK_INT(left->flip, SDL_FLIP_HORIZONTAL);
+        CHECK_INT(run->loop_mode, SPRAT_LOOPMODE_REPEAT);
     }
 
+    pingpong = SPRAT_GetAnimationFromName(sheet, "spin-pingpong");
+    CHECK(pingpong != NULL);
+    if (pingpong) {
+        CHECK_INT(pingpong->loop_mode, SPRAT_LOOPMODE_PINGPONG);
+        CHECK_INT(pingpong->num_frames, 5);
+        CHECK_INT(pingpong->frames[4], SPRAT_GetFrameFromName(sheet, "coin/spin_05.png"));
+    }
+
+    SPRAT_DestroySheet(sheet);
+}
+
+/* Version 2 sheets give each animation a loop mode; an alias plays the way its source does,
+   whatever mode it carries itself */
+static void test_load_loop_modes(void)
+{
+    SPRAT_AnimationPlayer player;
+    SPRAT_Sheet *sheet = load_text(
+        "sprat-raw 2\n"
+        "sheet 1 0 0 0 1 1 3 0 0 3 13 0: 0:\n"
+        "atlas 16 16 0: 0: 0:\n"
+        "sprite 0 0 0 4 4 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1:s 1:s 0:\n"
+        "anim 4 0 3 -1 2 0 0 3:opp\n"
+        "anim 4 1 0 0 0 4:back\n"
+        "anim 4 0 1 -1 1 0 4:once\n");
+
+    if (!sheet) {
+        return;
+    }
+
+    CHECK_INT(sheet->animations[0].loop_mode, SPRAT_LOOPMODE_ONCE_PINGPONG);
+    CHECK_INT(sheet->animations[1].loop_mode, SPRAT_LOOPMODE_ONCE_PINGPONG);
+    CHECK_INT(sheet->animations[1].flip, SDL_FLIP_HORIZONTAL);
+    CHECK_INT(sheet->animations[2].loop_mode, SPRAT_LOOPMODE_ONCE);
+
+    /* A player starts with its animation's mode */
+    SPRAT_InitAnimationPlayer(&player, &sheet->animations[2]);
+    CHECK_INT(player.loop_mode, SPRAT_LOOPMODE_ONCE);
+    SPRAT_InitAnimationPlayer(&player, NULL);
+    CHECK_INT(player.loop_mode, SPRAT_LOOPMODE_REPEAT);
     SPRAT_DestroySheet(sheet);
 }
 
@@ -417,6 +457,8 @@ static void test_enums_match_sprat(void)
     CHECK_INT(SPRAT_SLICEMODE_FIXED, SPRAT_SLICE_FIXED);
     CHECK_INT(SDL_FLIP_HORIZONTAL, SPRAT_FLIP_H);
     CHECK_INT(SDL_FLIP_VERTICAL, SPRAT_FLIP_V);
+    CHECK_INT(SPRAT_LOOPMODE_ONCE, SPRAT_LOOP_ONCE);
+    CHECK_INT(SPRAT_LOOPMODE_PINGPONG, SPRAT_LOOP_PINGPONG);
 }
 
 static void test_load_slices_and_markers(void)
@@ -620,6 +662,7 @@ static void test_lookups(void)
     CHECK(SPRAT_GetAnimationFromName(NULL, "back") == NULL);
     CHECK_ERROR("sheet");
     CHECK_INT(sheet->animations[1].flip, SDL_FLIP_HORIZONTAL_AND_VERTICAL);
+    CHECK_INT(sheet->animations[0].loop_mode, SPRAT_LOOPMODE_REPEAT);   /* version 1 sheets have no loop modes */
 
     hit = SPRAT_GetFrameMarker(sheet, 0, "hit");
     CHECK(hit != NULL);
@@ -680,7 +723,7 @@ static void test_lookups(void)
 /* Frames 7, 8, 9 at 4 fps: each lasts 0.25 s, exact in binary, and the
    animation lasts 0.75 s */
 static const int walk_frames[] = { 7, 8, 9 };
-static const SPRAT_Animation walk_animation = { "walk", 4, walk_frames, 3, SDL_FLIP_NONE };
+static const SPRAT_Animation walk_animation = { "walk", 4, walk_frames, 3, SDL_FLIP_NONE, SPRAT_LOOPMODE_REPEAT };
 
 static void test_animation_player(void)
 {
@@ -688,7 +731,7 @@ static void test_animation_player(void)
 
     SPRAT_InitAnimationPlayer(&player, &walk_animation);
     CHECK(player.playing);
-    CHECK(player.loop);
+    CHECK_INT(player.loop_mode, SPRAT_LOOPMODE_REPEAT);
     CHECK_FLOAT(player.speed, 1);
     CHECK_FLOAT(player.time, 0);
     CHECK_INT(SPRAT_GetAnimationFrame(&player), 7);
@@ -748,7 +791,7 @@ static void test_animation_player(void)
 
     /* Once: stops on the last frame and reports it finished */
     SPRAT_InitAnimationPlayer(&player, &walk_animation);
-    player.loop = false;
+    player.loop_mode = SPRAT_LOOPMODE_ONCE;
     SPRAT_UpdateAnimation(&player, 0.5f);
     CHECK(player.playing);
     CHECK(!SPRAT_IsAnimationFinished(&player));
@@ -794,7 +837,7 @@ static void test_animation_player(void)
     CHECK_INT(SPRAT_GetAnimationFrame(&player), 8);
 
     /* Play restarts a finished animation that plays once */
-    player.loop = false;
+    player.loop_mode = SPRAT_LOOPMODE_ONCE;
     SPRAT_UpdateAnimation(&player, 1.0f);
     CHECK(SPRAT_IsAnimationFinished(&player));
     SPRAT_PlayAnimation(&player);
@@ -828,7 +871,7 @@ static void test_animation_player(void)
     CHECK_INT(SPRAT_GetAnimationFrame(&player), -1);
     player.time = INFINITY;
     CHECK_INT(SPRAT_GetAnimationFrame(&player), -1);
-    player.loop = false;
+    player.loop_mode = SPRAT_LOOPMODE_ONCE;
     player.time = 100.0f;
     CHECK_INT(SPRAT_GetAnimationFrame(&player), 9);
     player.time = -100.0f;
@@ -845,13 +888,13 @@ static void test_animation_player(void)
 
     /* Nor does one without a frame rate, which a sheet can't have but a program could make */
     {
-        static const SPRAT_Animation still = { "still", 0, walk_frames, 3, SDL_FLIP_NONE };
+        static const SPRAT_Animation still = { "still", 0, walk_frames, 3, SDL_FLIP_NONE, SPRAT_LOOPMODE_REPEAT };
 
         SPRAT_InitAnimationPlayer(&player, &still);
         SPRAT_UpdateAnimation(&player, 1.0f);
         CHECK_FLOAT(player.time, 0);
         CHECK_INT(SPRAT_GetAnimationFrame(&player), -1);
-        player.loop = false;
+        player.loop_mode = SPRAT_LOOPMODE_ONCE;
         CHECK(!SPRAT_IsAnimationFinished(&player));
     }
 
@@ -863,6 +906,103 @@ static void test_animation_player(void)
     SPRAT_ResumeAnimation(NULL);
     CHECK(!SPRAT_IsAnimationFinished(NULL));
     CHECK_INT(SPRAT_GetAnimationFrame(NULL), -1);
+}
+
+/* Checks the frames a player shows, updating it by one frame (0.25 s) after each */
+#define CHECK_FRAMES(player, expected) check_frames(__LINE__, (player), (expected), COUNT(expected))
+
+static void check_frames(int line, SPRAT_AnimationPlayer *player, const int *expected, size_t count)
+{
+    size_t i;
+
+    for (i = 0; i < count; i++) {
+        int frame = SPRAT_GetAnimationFrame(player);
+
+        if (frame != expected[i]) {
+            fprintf(stderr, "%s:%d: frame %u is %d, expected %d\n", __FILE__, line, (unsigned)i, frame, expected[i]);
+            failures++;
+        }
+        SPRAT_UpdateAnimation(player, 0.25f);
+    }
+}
+
+/* The first num_frames of walk_animation, played with a loop mode */
+static void init_walk_player(SPRAT_AnimationPlayer *player, SPRAT_Animation *animation, SPRAT_LoopMode loop_mode, int num_frames)
+{
+    *animation = walk_animation;
+    animation->num_frames = num_frames;
+    SPRAT_InitAnimationPlayer(player, animation);
+    player->loop_mode = loop_mode;
+}
+
+static void test_animation_pingpong(void)
+{
+    static const int forward[] = { 7, 8, 9, 8, 7, 8, 9, 8, 7 };
+    static const int backward[] = { 8, 9, 8, 7, 8, 9 };
+    static const int once[] = { 7, 8, 9, 8, 7 };
+    SPRAT_Animation animation;
+    SPRAT_AnimationPlayer player;
+
+    /* Repeating: 7 8 9 8, then 7 again; one pass lasts 1 s */
+    init_walk_player(&player, &animation, SPRAT_LOOPMODE_PINGPONG, 3);
+    CHECK_FRAMES(&player, forward);
+    CHECK(player.playing);
+    CHECK(!SPRAT_IsAnimationFinished(&player));
+    CHECK_FLOAT(player.time, 0.25f);
+
+    /* In reverse: the same pass backwards, from its last step */
+    player.speed = -1.0f;
+    SPRAT_PlayAnimation(&player);
+    CHECK_FLOAT(player.time, 1.0f);
+    CHECK_FRAMES(&player, backward);
+
+    /* Once: 7 8 9 8 7, stopping on the first frame after 1.25 s */
+    init_walk_player(&player, &animation, SPRAT_LOOPMODE_ONCE_PINGPONG, 3);
+    CHECK_FRAMES(&player, once);
+    CHECK(!player.playing);
+    CHECK(SPRAT_IsAnimationFinished(&player));
+    CHECK_FLOAT(player.time, 1.25f);
+    CHECK_INT(SPRAT_GetAnimationFrame(&player), 7);
+    player.time = 100.0f;
+    CHECK_INT(SPRAT_GetAnimationFrame(&player), 7);
+
+    /* Once in reverse: the same frames, stopping on the first frame at time 0 */
+    player.speed = -1.0f;
+    SPRAT_PlayAnimation(&player);
+    CHECK_FRAMES(&player, once);    /* a palindrome */
+    CHECK(SPRAT_IsAnimationFinished(&player));
+    CHECK_FLOAT(player.time, 0);
+    CHECK_INT(SPRAT_GetAnimationFrame(&player), 7);
+
+    /* Two frames: 7 8 repeating, or 7 8 7 once; one frame has no way back */
+    init_walk_player(&player, &animation, SPRAT_LOOPMODE_PINGPONG, 2);
+    CHECK_FLOAT(GetAnimationDuration(&player), 0.5f);
+    player.time = 0.5f;
+    CHECK_INT(SPRAT_GetAnimationFrame(&player), 7);
+    init_walk_player(&player, &animation, SPRAT_LOOPMODE_ONCE_PINGPONG, 2);
+    CHECK_FLOAT(GetAnimationDuration(&player), 0.75f);
+    player.time = 0.5f;
+    CHECK_INT(SPRAT_GetAnimationFrame(&player), 7);
+    player.time = 0.25f;
+    CHECK_INT(SPRAT_GetAnimationFrame(&player), 8);
+    init_walk_player(&player, &animation, SPRAT_LOOPMODE_PINGPONG, 1);
+    CHECK_FLOAT(GetAnimationDuration(&player), 0.25f);
+    player.time = 0.6f;
+    CHECK_INT(SPRAT_GetAnimationFrame(&player), 7);
+
+    /* The player's mode wins over its animation's */
+    init_walk_player(&player, &animation, SPRAT_LOOPMODE_REPEAT, 3);
+    animation.loop_mode = SPRAT_LOOPMODE_ONCE;
+    player.time = 1.0f;
+    CHECK_INT(SPRAT_GetAnimationFrame(&player), 8);
+
+    /* The pass of the largest frame count doesn't overflow */
+    {
+        static const SPRAT_Animation huge = { "huge", 1, walk_frames, SDL_MAX_SINT32, SDL_FLIP_NONE, SPRAT_LOOPMODE_ONCE_PINGPONG };
+
+        SPRAT_InitAnimationPlayer(&player, &huge);
+        CHECK(GetAnimationStepCount(&player) == 2.0 * SDL_MAX_SINT32 - 1.0);
+    }
 }
 
 /* ---- Marker overlaps ------------------------------------------------------ */
@@ -2124,7 +2264,7 @@ static void test_render_animation(void)
     static const image_case img = { 10, 6, 1, 2, 3, 0, 5, 3 };
     static const SPRAT_Slice no_slice = { 0, 0, 0, 0, SPRAT_SLICEMODE_STRETCH, SPRAT_SLICEMODE_STRETCH };
     static const int frames[] = { 0 };
-    static const SPRAT_Animation mirrored = { "mirrored", 10, frames, 1, SDL_FLIP_HORIZONTAL };
+    static const SPRAT_Animation mirrored = { "mirrored", 10, frames, 1, SDL_FLIP_HORIZONTAL, SPRAT_LOOPMODE_REPEAT };
     SPRAT_AnimationPlayer player;
     canvas *c = make_canvas();
 
@@ -2510,6 +2650,7 @@ int main(void)
     test_version();
     test_load_example();
     test_load_polygon_and_empty();
+    test_load_loop_modes();
     test_alias_frames_are_shared();
     test_add_size_overflow();
     test_paths();
@@ -2521,6 +2662,7 @@ int main(void)
     test_frame_names();
     test_lookups();
     test_animation_player();
+    test_animation_pingpong();
     test_markers_overlap();
     test_markers_overlap_matches_reference();
     test_markers_overlap_at_threshold();

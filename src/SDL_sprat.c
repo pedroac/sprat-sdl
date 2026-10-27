@@ -260,6 +260,7 @@ static SPRAT_Sheet *ConvertSheet(const sprat_sheet *raw)
         anim->fps = src->fps;
         anim->num_frames = (int)src->frame_count;
         anim->flip = (SDL_FlipMode)src->flip;   /* SPRAT_FLIP_H and SPRAT_FLIP_V have SDL_FLIP_HORIZONTAL and SDL_FLIP_VERTICAL's values */
+        anim->loop_mode = (SPRAT_LoopMode)src->loop;    /* SPRAT_LOOP_ONCE and SPRAT_LOOP_PINGPONG have SPRAT_LOOPMODE_ONCE and SPRAT_LOOPMODE_PINGPONG's values */
 
         if (src->frame_count == 0) {
             continue;
@@ -1586,14 +1587,36 @@ const SPRAT_Animation *SPRAT_GetAnimationFromName(const SPRAT_Sheet *sheet, cons
     return NULL;
 }
 
-/* Get an animation's duration in seconds, 0 for none or one without frames */
-static double GetAnimationDuration(const SPRAT_Animation *animation)
+/* Get the number of frames shown in one pass of a player's animation, 0 for none or one without
+   frames. Ping-pong walks the frames back without repeating the last: 0 1 2 1
+   repeats, and played once, 0 1 2 1 0 stops on the first frame. In double, so no frame count
+   overflows it */
+static double GetAnimationStepCount(const SPRAT_AnimationPlayer *player)
 {
+    const SPRAT_Animation *animation = player->animation;
+    double count;
+
     if (!animation || animation->num_frames <= 0 || animation->fps <= 0) {
         return 0.0;
     }
 
-    return (double)animation->num_frames / animation->fps;
+    count = animation->num_frames;
+    if ((player->loop_mode & SPRAT_LOOPMODE_PINGPONG) && count > 1.0) {
+        count = 2.0 * count - ((player->loop_mode & SPRAT_LOOPMODE_ONCE) ? 1.0 : 2.0);
+    }
+    return count;
+}
+
+/* Get the duration in seconds of one pass of a player's animation, 0 for none or one without frames */
+static double GetAnimationDuration(const SPRAT_AnimationPlayer *player)
+{
+    double count = GetAnimationStepCount(player);
+
+    if (count <= 0.0) {
+        return 0.0;
+    }
+
+    return count / player->animation->fps;
 }
 
 static bool IsFinite(double x)
@@ -1611,7 +1634,7 @@ void SPRAT_InitAnimationPlayer(SPRAT_AnimationPlayer *player, const SPRAT_Animat
     player->animation = animation;
     player->speed = 1.0f;
     player->playing = true;
-    player->loop = true;
+    player->loop_mode = animation ? animation->loop_mode : SPRAT_LOOPMODE_REPEAT;
 }
 
 void SPRAT_UpdateAnimation(SPRAT_AnimationPlayer *player, float seconds)
@@ -1622,7 +1645,7 @@ void SPRAT_UpdateAnimation(SPRAT_AnimationPlayer *player, float seconds)
         return;
     }
 
-    duration = GetAnimationDuration(player->animation);
+    duration = GetAnimationDuration(player);
     if (duration <= 0.0) {
         return;
     }
@@ -1632,7 +1655,7 @@ void SPRAT_UpdateAnimation(SPRAT_AnimationPlayer *player, float seconds)
         return;     /* NaN or infinite time, step or speed: keep the last good time */
     }
 
-    if (player->loop) {
+    if (!(player->loop_mode & SPRAT_LOOPMODE_ONCE)) {
         /* Wrapping keeps the time precise however long the animation plays */
         time = SDL_fmod(time, duration);
         if (time < 0.0) {
@@ -1659,7 +1682,7 @@ void SPRAT_PlayAnimation(SPRAT_AnimationPlayer *player)
         return;
     }
 
-    player->time = (player->speed < 0.0f) ? (float)GetAnimationDuration(player->animation) : 0.0f;
+    player->time = (player->speed < 0.0f) ? (float)GetAnimationDuration(player) : 0.0f;
     player->playing = true;
 }
 
@@ -1691,11 +1714,11 @@ bool SPRAT_IsAnimationFinished(const SPRAT_AnimationPlayer *player)
 {
     double duration;
 
-    if (!player || player->loop) {
+    if (!player || !(player->loop_mode & SPRAT_LOOPMODE_ONCE)) {
         return false;
     }
 
-    duration = GetAnimationDuration(player->animation);
+    duration = GetAnimationDuration(player);
     if (duration <= 0.0) {
         return false;
     }
@@ -1706,14 +1729,15 @@ bool SPRAT_IsAnimationFinished(const SPRAT_AnimationPlayer *player)
 int SPRAT_GetAnimationFrame(const SPRAT_AnimationPlayer *player)
 {
     const SPRAT_Animation *anim;
-    double position, step;
+    double count, position, step;
 
     if (!player || !player->animation) {
         return -1;
     }
 
     anim = player->animation;
-    if (anim->num_frames <= 0 || !anim->frames || anim->fps <= 0) {
+    count = GetAnimationStepCount(player);
+    if (count <= 0.0 || !anim->frames) {
         return -1;
     }
 
@@ -1723,16 +1747,20 @@ int SPRAT_GetAnimationFrame(const SPRAT_AnimationPlayer *player)
         return -1;  /* NaN or infinite time: (int)step would be undefined */
     }
 
-    if (player->loop) {
+    if (!(player->loop_mode & SPRAT_LOOPMODE_ONCE)) {
         /* SDL_fmod() keeps the step exact and in range for any time, negative included */
-        step = SDL_fmod(step, (double)anim->num_frames);
+        step = SDL_fmod(step, count);
         if (step < 0.0) {
-            step += anim->num_frames;
+            step += count;
         }
     } else if (step < 0.0) {
         step = 0.0;
-    } else if (step > anim->num_frames - 1) {
-        step = anim->num_frames - 1;
+    } else if (step > count - 1.0) {
+        step = count - 1.0;
+    }
+
+    if (step >= anim->num_frames) {
+        step = 2.0 * (anim->num_frames - 1) - step;     /* On the way back */
     }
 
     return anim->frames[(int)step];

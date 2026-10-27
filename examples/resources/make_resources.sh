@@ -1,5 +1,5 @@
 #!/bin/sh
-# Rebuilds sheet.sprat and atlas.png from sources/ with sprat-cli (v0.21 or later).
+# Rebuilds sheet.sprat and atlas.png from sources/ with sprat-cli (v0.24 or later).
 # The frames in sources/ are drawn by make_sources.py.
 set -e
 cd "$(dirname "$0")"

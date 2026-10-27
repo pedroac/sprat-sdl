@@ -38,6 +38,7 @@ static SPRAT_AnimationPlayer run, run_left, hero_run;
 static SPRAT_AnimationPlayer spins[NUM_SPINS];
 static const float spin_speeds[NUM_SPINS] = { 1.0f, 0.5f, -1.0f };   /* normal, half speed, reversed */
 static SPRAT_AnimationPlayer coin_spin;
+static SPRAT_AnimationPlayer coin_pingpong;
 static int idle, panel;
 
 /* Sprites are where frames are: rendered there, and their markers placed there */
@@ -118,6 +119,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
         spins[i].speed = spin_speeds[i];
     }
     SPRAT_InitAnimationPlayer(&coin_spin, SPRAT_GetAnimationFromName(sheet, "spin"));
+    SPRAT_InitAnimationPlayer(&coin_pingpong, SPRAT_GetAnimationFromName(sheet, "spin-pingpong"));
     idle = SPRAT_GetFrameFromName(sheet, "hero/run_01.png");
     panel = SPRAT_GetFrameFromName(sheet, "panel");
 
@@ -210,6 +212,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         SPRAT_UpdateAnimation(&spins[i], dt);
     }
     SPRAT_UpdateAnimation(&coin_spin, dt);
+    SPRAT_UpdateAnimation(&coin_pingpong, dt);
 
     if (swing_time > 0.0f) {
         swing_time -= dt;
@@ -267,11 +270,13 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     SDL_RenderDebugText(renderer, panel_rect.x + 24.0f, panel_rect.y + 56.0f, "LEFT/RIGHT run, SPACE swing");
     SDL_RenderDebugText(renderer, panel_rect.x + 24.0f, panel_rect.y + 70.0f, "D pivots and hitboxes, P pause");
 
-    /* Looping animations, with the flip the sheet gave each one */
+    /* Animations, with the flip and loop mode the sheet gave each one */
     SDL_SetRenderDrawColor(renderer, 130, 130, 130, 255);
     SDL_RenderDebugText(renderer, 470.0f, 40.0f, "run");
     SDL_RenderDebugText(renderer, 560.0f, 40.0f, "run-left (flip h)");
     SDL_RenderDebugText(renderer, 728.0f, 40.0f, "spin");
+    SDL_RenderDebugText(renderer, 380.0f, 40.0f, "pingpong");
+    SPRAT_RenderAnimation(renderer, sheet, &coin_pingpong, 410.0f, 90.0f);
     SPRAT_RenderAnimation(renderer, sheet, &run, 490.0f, 150.0f);
     SPRAT_RenderAnimation(renderer, sheet, &run_left, 630.0f, 150.0f);
     for (i = 0; i < NUM_SPINS; i++) {
