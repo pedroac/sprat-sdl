@@ -137,6 +137,7 @@ bool SPRAT_MarkersOverlap(const SPRAT_Sprite *sprite_a, const SPRAT_Marker *mark
 /* Animations */
 const SPRAT_Animation *SPRAT_GetAnimationFromName(const SPRAT_Sheet *sheet, const char *name);
 void SPRAT_InitAnimationPlayer(SPRAT_AnimationPlayer *player, const SPRAT_Animation *animation);
+void SPRAT_SetAnimation(SPRAT_AnimationPlayer *player, const SPRAT_Animation *animation);
 void SPRAT_UpdateAnimation(SPRAT_AnimationPlayer *player, float seconds);
 void SPRAT_PlayAnimation(SPRAT_AnimationPlayer *player);
 void SPRAT_StopAnimation(SPRAT_AnimationPlayer *player);
@@ -144,7 +145,11 @@ void SPRAT_PauseAnimation(SPRAT_AnimationPlayer *player);
 void SPRAT_ResumeAnimation(SPRAT_AnimationPlayer *player);
 bool SPRAT_IsAnimationFinished(const SPRAT_AnimationPlayer *player);
 int SPRAT_GetAnimationFrame(const SPRAT_AnimationPlayer *player);
+void SPRAT_SetSpriteAnimationFrame(SPRAT_Sprite *sprite, const SPRAT_AnimationPlayer *player);
+void SPRAT_UpdateSpriteAnimation(SPRAT_Sprite *sprite, SPRAT_AnimationPlayer *player, float seconds);
 bool SPRAT_RenderAnimation(SDL_Renderer *renderer, const SPRAT_Sheet *sheet, const SPRAT_AnimationPlayer *player, float x, float y);
+bool SPRAT_RenderAnimationRotated(SDL_Renderer *renderer, const SPRAT_Sheet *sheet, const SPRAT_AnimationPlayer *player,
+                                  float x, float y, float scale_x, float scale_y, double angle, SDL_FlipMode flip);
 ```
 
 Every function is documented in [`SDL_sprat.h`](include/SDL3_sprat/SDL_sprat.h),
@@ -315,14 +320,40 @@ attack.loop_mode = SPRAT_LOOPMODE_ONCE;
 
 `SPRAT_GetAnimationFrame()` gives the frame shown now, an index into
 `sheet->frames`. `SPRAT_RenderAnimation()` renders it with the animation's
-flip. To scale, turn or mirror it, or to use its markers, set a sprite's frame
-from it each update, and combine the animation's flip with yours:
+flip, and `SPRAT_RenderAnimationRotated()` also scaled and turned, with a flip
+combined with the animation's (flipping an animation already flipped on an
+axis undoes it).
+
+When the frame shown also places markers, keep a sprite and a player together.
+`SPRAT_SetAnimation()` switches the animation played, restarting it with its
+loop mode and keeping the speed; for the one already played it does nothing,
+so set it every update. `SPRAT_UpdateSpriteAnimation()` advances the player,
+then sets the sprite's frame and flip from it, leaving the rest alone: mirror
+the sprite with a negative scale.
 
 ```c
-enemy.sprite.frame = SPRAT_GetAnimationFrame(&enemy.walk);
-enemy.sprite.flip = (SDL_FlipMode)(enemy.walk.animation->flip ^ enemy.facing);
+typedef struct Enemy
+{
+    SPRAT_Sprite sprite;
+    SPRAT_AnimationPlayer animation;
+    bool facing_left;
+} Enemy;
+
+SPRAT_SetAnimation(&enemy.animation, moving ? walk : idle);
+SPRAT_UpdateSpriteAnimation(&enemy.sprite, &enemy.animation, dt);
+enemy.sprite.scale_x = enemy.facing_left ? -1.0f : 1.0f;
+hitbox = SPRAT_GetSpriteMarker(&enemy.sprite, "hitbox");
 SPRAT_RenderSprite(renderer, &enemy.sprite);
 ```
+
+An animation is the one played when it is the same pointer, as the sheet's
+animations are, so any other one restarts the player, an alias or a copy
+included. To play the one played another way, set the player's `speed` or
+`loop_mode`, or the sprite's scale, rather than switching to a copy; for a pose
+such as idle, add an animation to the sheet, as the example does. After
+`SPRAT_StopAnimation()` or `SPRAT_PlayAnimation()`, 0 seconds only sets the
+sprite. `SPRAT_SetSpriteAnimationFrame()` sets a sprite without advancing the
+player, for several sprites sharing one.
 
 ### Markers
 

@@ -19,11 +19,16 @@
  *
  * ```c
  * SPRAT_Sheet *sheet = SPRAT_LoadSheet(renderer, "hero.sprat");
- * SPRAT_AnimationPlayer run;
- * SPRAT_InitAnimationPlayer(&run, SPRAT_GetAnimationFromName(sheet, "run"));
+ * const SPRAT_Animation *idle = SPRAT_GetAnimationFromName(sheet, "idle");
+ * const SPRAT_Animation *run = SPRAT_GetAnimationFromName(sheet, "run");
+ * SPRAT_Sprite hero = { sheet, -1, 400.0f, 300.0f, 1.0f, 1.0f, 0.0, SDL_FLIP_NONE };
+ * SPRAT_AnimationPlayer player;
+ * SPRAT_InitAnimationPlayer(&player, idle);
  * ...
- * SPRAT_UpdateAnimation(&run, seconds);
- * SPRAT_RenderAnimation(renderer, sheet, &run, 400.0f, 300.0f);
+ * SPRAT_SetAnimation(&player, running ? run : idle);     // restarts only on a change
+ * SPRAT_UpdateSpriteAnimation(&hero, &player, seconds);   // sets hero's frame and flip
+ * const SPRAT_Marker *hitbox = SPRAT_GetSpriteMarker(&hero, "hitbox");
+ * SPRAT_RenderSprite(renderer, &hero);
  * ...
  * SPRAT_DestroySheet(sheet);
  * ```
@@ -71,7 +76,7 @@ extern "C" {
  *
  * \since This macro is available since sprat-sdl 0.1.0.
  */
-#define SDL_SPRAT_MINOR_VERSION   2
+#define SDL_SPRAT_MINOR_VERSION   3
 
 /**
  * The current micro (or patchlevel) version of sprat-sdl headers.
@@ -327,10 +332,9 @@ typedef struct SPRAT_AnimationPlayer
  * A sprite is not an object of the library: it is a plain struct, owned by the
  * program, that SPRAT_RenderSprite() renders and the marker functions place
  * markers with, so what is drawn and what collides always agree. Keep a
- * sprite as part of the program's state, and change its fields directly, such
- * as `frame` from an animation player's SPRAT_GetAnimationFrame() each update,
- * and `flip` combined with the animation's, as `(SDL_FlipMode)(flip ^
- * player->animation->flip)`.
+ * sprite as part of the program's state, and change its fields directly;
+ * SPRAT_UpdateSpriteAnimation() sets its `frame` and `flip` from an animation
+ * player each update, so mirror an animated sprite with a negative scale.
  *
  * The frame is scaled, then mirrored around its pivot, then rotated clockwise
  * around it by `angle` degrees. `scale_x` and `scale_y` are not the sheet's
@@ -351,6 +355,7 @@ typedef struct SPRAT_AnimationPlayer
  * \sa SPRAT_GetMarkerCenter
  * \sa SPRAT_GetMarkerOutline
  * \sa SPRAT_MarkersOverlap
+ * \sa SPRAT_UpdateSpriteAnimation
  */
 typedef struct SPRAT_Sprite
 {
@@ -705,9 +710,42 @@ extern SDL_DECLSPEC const SPRAT_Animation * SDLCALL SPRAT_GetAnimationFromName(c
  *
  * \since This function is available since sprat-sdl 0.1.0.
  *
+ * \sa SPRAT_SetAnimation
  * \sa SPRAT_UpdateAnimation
  */
 extern SDL_DECLSPEC void SDLCALL SPRAT_InitAnimationPlayer(SPRAT_AnimationPlayer *player, const SPRAT_Animation *animation);
+
+/**
+ * Set the animation a player plays: restart with it, with its loop mode and
+ * the player's speed, unless it is the one played.
+ *
+ * The one played is left as it is, stopped or finished included, so set the
+ * animation every update, and it restarts only when it changes:
+ *
+ * ```c
+ * SPRAT_SetAnimation(&player, moving ? walk : idle);
+ * SPRAT_UpdateSpriteAnimation(&sprite, &player, seconds);
+ * ```
+ *
+ * An animation is the one played when it is the same pointer, as the sheet's
+ * animations are, so any other animation restarts the player, an alias or a
+ * copy included. To play the one played another way, set the player's `speed`
+ * or `loop_mode`, or the sprite's scale, rather than switching to a copy.
+ *
+ * \param player the player.
+ * \param animation the animation to play, or NULL to play nothing. It must
+ *                  stay valid while the player plays it.
+ *
+ * \threadsafety It is safe to call this function from any thread, with a
+ *               player no other thread uses.
+ *
+ * \since This function is available since sprat-sdl 0.3.0.
+ *
+ * \sa SPRAT_InitAnimationPlayer
+ * \sa SPRAT_PlayAnimation
+ * \sa SPRAT_UpdateSpriteAnimation
+ */
+extern SDL_DECLSPEC void SDLCALL SPRAT_SetAnimation(SPRAT_AnimationPlayer *player, const SPRAT_Animation *animation);
 
 /**
  * Advance a playing animation by a number of seconds, scaled by its speed.
@@ -816,12 +854,57 @@ extern SDL_DECLSPEC bool SDLCALL SPRAT_IsAnimationFinished(const SPRAT_Animation
 extern SDL_DECLSPEC int SDLCALL SPRAT_GetAnimationFrame(const SPRAT_AnimationPlayer *player);
 
 /**
+ * Set a sprite's frame to the one an animation shows now, and its flip to the
+ * animation's.
+ *
+ * The sprite's flip is replaced, not combined: mirror an animated sprite with
+ * a negative scale instead. The rest of the sprite is left as it is. Use it
+ * to set several sprites from one player; SPRAT_UpdateSpriteAnimation() also
+ * advances the player.
+ *
+ * \param sprite the sprite to set.
+ * \param player the player. With no animation, or one without frames, the
+ *               sprite's frame is set to -1, which renders nothing and fails.
+ *
+ * \threadsafety It is safe to call this function from any thread, with a
+ *               sprite no other thread uses.
+ *
+ * \since This function is available since sprat-sdl 0.3.0.
+ *
+ * \sa SPRAT_UpdateSpriteAnimation
+ * \sa SPRAT_GetAnimationFrame
+ */
+extern SDL_DECLSPEC void SDLCALL SPRAT_SetSpriteAnimationFrame(SPRAT_Sprite *sprite, const SPRAT_AnimationPlayer *player);
+
+/**
+ * Advance an animation by a number of seconds, then set a sprite's frame and
+ * flip from it.
+ *
+ * Works as SPRAT_UpdateAnimation() followed by
+ * SPRAT_SetSpriteAnimationFrame(). After SPRAT_StopAnimation() or
+ * SPRAT_PlayAnimation(), 0 seconds only sets the sprite.
+ *
+ * \param sprite the sprite to set, or NULL to only advance the player.
+ * \param player the player.
+ * \param seconds the time elapsed, e.g. a difference of SDL_GetTicksNS() / 1e9.
+ *
+ * \threadsafety It is safe to call this function from any thread, with a
+ *               sprite and a player no other thread uses.
+ *
+ * \since This function is available since sprat-sdl 0.3.0.
+ *
+ * \sa SPRAT_SetAnimation
+ * \sa SPRAT_SetSpriteAnimationFrame
+ * \sa SPRAT_UpdateAnimation
+ */
+extern SDL_DECLSPEC void SDLCALL SPRAT_UpdateSpriteAnimation(SPRAT_Sprite *sprite, SPRAT_AnimationPlayer *player, float seconds);
+
+/**
  * Render the frame an animation shows now, with the animation's flip.
  *
- * To scale, rotate or mirror it, or to place its markers, use a SPRAT_Sprite:
- * set its frame to SPRAT_GetAnimationFrame() and combine your flip with the
- * animation's, `(SDL_FlipMode)(player->animation->flip ^ flip)`, then render
- * it with SPRAT_RenderSprite().
+ * To scale, rotate or mirror it, use SPRAT_RenderAnimationRotated(). To place
+ * its markers too, keep a SPRAT_Sprite in step with the player with
+ * SPRAT_UpdateSpriteAnimation(), and render it with SPRAT_RenderSprite().
  *
  * \param renderer the renderer to draw with.
  * \param sheet the sheet the animation belongs to.
@@ -835,8 +918,41 @@ extern SDL_DECLSPEC int SDLCALL SPRAT_GetAnimationFrame(const SPRAT_AnimationPla
  * \threadsafety This function should only be called on the main thread.
  *
  * \since This function is available since sprat-sdl 0.1.0.
+ *
+ * \sa SPRAT_RenderAnimationRotated
  */
 extern SDL_DECLSPEC bool SDLCALL SPRAT_RenderAnimation(SDL_Renderer *renderer, const SPRAT_Sheet *sheet, const SPRAT_AnimationPlayer *player, float x, float y);
+
+/**
+ * Render the frame an animation shows now, scaled, mirrored and rotated
+ * around its pivot.
+ *
+ * Renders as SPRAT_RenderSprite() a sprite of the frame placed with these
+ * values, its flip combined with the animation's: flipping an animation
+ * already flipped on an axis renders it unflipped on that axis.
+ *
+ * \param renderer the renderer to draw with.
+ * \param sheet the sheet the animation belongs to.
+ * \param player the player.
+ * \param x the x coordinate to put the frame's pivot at.
+ * \param y the y coordinate to put the frame's pivot at.
+ * \param scale_x the horizontal scale, negative to mirror.
+ * \param scale_y the vertical scale, negative to mirror.
+ * \param angle the clockwise rotation around the pivot, in degrees.
+ * \param flip the mirroring around the pivot, combined with the animation's.
+ * \returns true on success or false on failure; call SDL_GetError() for more
+ *          information. An animation without frames renders nothing and
+ *          succeeds.
+ *
+ * \threadsafety This function should only be called on the main thread.
+ *
+ * \since This function is available since sprat-sdl 0.3.0.
+ *
+ * \sa SPRAT_RenderAnimation
+ * \sa SPRAT_RenderSprite
+ */
+extern SDL_DECLSPEC bool SDLCALL SPRAT_RenderAnimationRotated(SDL_Renderer *renderer, const SPRAT_Sheet *sheet, const SPRAT_AnimationPlayer *player,
+                                                              float x, float y, float scale_x, float scale_y, double angle, SDL_FlipMode flip);
 
 /* Ends C function definitions when using C++ */
 #ifdef __cplusplus

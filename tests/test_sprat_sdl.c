@@ -127,7 +127,7 @@ static void test_load_example(void)
 {
     SPRAT_Sheet *sheet = SPRAT_LoadSheet(NULL, SPRAT_SDL_EXAMPLE_SHEET);
     const SPRAT_Frame *sword, *hero, *panel;
-    const SPRAT_Animation *run, *left, *pingpong;
+    const SPRAT_Animation *run, *left, *idle, *pingpong;
     int run01;
 
     CHECK(sheet != NULL);
@@ -141,7 +141,7 @@ static void test_load_example(void)
     CHECK_INT(sheet->atlases[0].h, 134);
     CHECK(sheet->atlases[0].texture == NULL);   /* no renderer, no textures */
     CHECK_INT(sheet->num_frames, 16);
-    CHECK_INT(sheet->num_animations, 4);
+    CHECK_INT(sheet->num_animations, 5);
     CHECK_FLOAT(sheet->scale, 1.0);
 
     /* sprite 0 56 12 ... rotation 90, trim 0, pivot 6,50 */
@@ -197,6 +197,13 @@ static void test_load_example(void)
         CHECK_INT(left->num_frames, 6);
         CHECK_INT(left->flip, SDL_FLIP_HORIZONTAL);
         CHECK_INT(run->loop_mode, SPRAT_LOOPMODE_REPEAT);
+    }
+
+    idle = SPRAT_GetAnimationFromName(sheet, "idle");      /* the run's first frame */
+    CHECK(idle != NULL);
+    if (idle) {
+        CHECK_INT(idle->num_frames, 1);
+        CHECK_INT(idle->frames[0], run01);
     }
 
     pingpong = SPRAT_GetAnimationFromName(sheet, "spin-pingpong");
@@ -933,6 +940,138 @@ static void init_walk_player(SPRAT_AnimationPlayer *player, SPRAT_Animation *ani
     animation->num_frames = num_frames;
     SPRAT_InitAnimationPlayer(player, animation);
     player->loop_mode = loop_mode;
+}
+
+/* Setting the animation played restarts only on a change, keeping the speed */
+static void test_set_animation(void)
+{
+    static const int idle_frames[] = { 3 };
+    SPRAT_Animation idle = walk_animation;
+    SPRAT_Animation once = walk_animation;
+    SPRAT_Animation shorter = walk_animation;
+    SPRAT_AnimationPlayer player;
+
+    idle.name = "idle";
+    idle.frames = idle_frames;
+    idle.num_frames = 1;
+    idle.loop_mode = SPRAT_LOOPMODE_ONCE;
+    once.loop_mode = SPRAT_LOOPMODE_ONCE;
+    once.flip = SDL_FLIP_VERTICAL;
+    shorter.num_frames = 2;
+
+    SPRAT_InitAnimationPlayer(&player, &walk_animation);
+    player.speed = 2.0f;
+    SPRAT_UpdateAnimation(&player, 0.125f);
+    CHECK_INT(SPRAT_GetAnimationFrame(&player), 8);
+
+    player.loop_mode = SPRAT_LOOPMODE_PINGPONG;
+    SPRAT_SetAnimation(&player, &walk_animation);   /* the one played: nothing changes */
+    CHECK_FLOAT(player.time, 0.25f);
+    CHECK_INT(player.loop_mode, SPRAT_LOOPMODE_PINGPONG);
+    SPRAT_SetAnimation(&player, &once);             /* a copy is another one: replaced */
+    CHECK(player.animation == &once);
+    CHECK_FLOAT(player.time, 0);
+    CHECK_INT(player.loop_mode, SPRAT_LOOPMODE_ONCE);
+
+    SPRAT_SetAnimation(&player, &idle);             /* another one: replaced, from its start */
+    CHECK(player.animation == &idle);
+    CHECK_FLOAT(player.time, 0);
+    CHECK_FLOAT(player.speed, 2);
+    CHECK_INT(player.loop_mode, SPRAT_LOOPMODE_ONCE);   /* its own loop mode */
+    CHECK(player.playing);
+    CHECK_INT(SPRAT_GetAnimationFrame(&player), 3);
+
+    SPRAT_SetAnimation(&player, &walk_animation);
+    CHECK_INT(player.loop_mode, SPRAT_LOOPMODE_REPEAT);
+    SPRAT_UpdateAnimation(&player, 0.125f);
+    SPRAT_SetAnimation(&player, &shorter);          /* another frame count: replaced */
+    CHECK(player.animation == &shorter);
+    CHECK_FLOAT(player.time, 0);
+
+    SPRAT_StopAnimation(&player);
+    SPRAT_SetAnimation(&player, &shorter);          /* stopped stays stopped */
+    CHECK(!player.playing);
+    SPRAT_SetAnimation(&player, &walk_animation);   /* a new one plays */
+    CHECK(player.playing);
+
+    player.speed = -1.0f;
+    SPRAT_SetAnimation(&player, &idle);             /* reversed: from its end */
+    CHECK_FLOAT(player.time, 0.25f);
+    CHECK_INT(SPRAT_GetAnimationFrame(&player), 3);
+
+    SPRAT_SetAnimation(&player, NULL);              /* nothing played */
+    CHECK(player.animation == NULL);
+    CHECK_INT(player.loop_mode, SPRAT_LOOPMODE_REPEAT);
+    CHECK_INT(SPRAT_GetAnimationFrame(&player), -1);
+    SPRAT_SetAnimation(&player, NULL);
+    SPRAT_SetAnimation(&player, &walk_animation);
+    CHECK(player.animation == &walk_animation);
+
+    SPRAT_SetAnimation(NULL, &walk_animation);      /* ignored */
+}
+
+/* A sprite follows its player's frame and flip; the rendered animation sprite combines the
+   given transform with them */
+static void test_animation_sprite(void)
+{
+    SPRAT_Animation mirrored = walk_animation;
+    SPRAT_AnimationPlayer player, none;
+    SPRAT_Sprite sprite = { NULL, 0, 5.0f, 6.0f, -2.0f, 3.0f, 45.0, SDL_FLIP_VERTICAL };
+    SPRAT_Sprite rendered;
+
+    mirrored.flip = SDL_FLIP_HORIZONTAL;
+    SPRAT_InitAnimationPlayer(&player, &mirrored);
+
+    SPRAT_SetSpriteAnimationFrame(&sprite, &player);
+    CHECK_INT(sprite.frame, 7);
+    CHECK_INT(sprite.flip, SDL_FLIP_HORIZONTAL);    /* replaced, not combined */
+    CHECK_FLOAT(sprite.x, 5);                       /* the rest is the program's */
+    CHECK_FLOAT(sprite.scale_x, -2);
+    CHECK_FLOAT(sprite.angle, 45);
+
+    SPRAT_UpdateAnimation(&player, 0.5f);
+    SPRAT_SetSpriteAnimationFrame(&sprite, &player);
+    CHECK_INT(sprite.frame, 9);
+    SPRAT_SetSpriteAnimationFrame(&sprite, &player);    /* idempotent */
+    CHECK_INT(sprite.frame, 9);
+    CHECK_INT(sprite.flip, SDL_FLIP_HORIZONTAL);
+
+    SPRAT_SetSpriteAnimationFrame(NULL, &player);   /* ignored */
+    SPRAT_InitAnimationPlayer(&none, NULL);
+    SPRAT_SetSpriteAnimationFrame(&sprite, &none);
+    CHECK_INT(sprite.frame, -1);                    /* nothing shown */
+    CHECK_INT(sprite.flip, SDL_FLIP_NONE);
+    sprite.frame = 0;
+    SPRAT_SetSpriteAnimationFrame(&sprite, NULL);
+    CHECK_INT(sprite.frame, -1);
+
+    rendered = MakeAnimationSprite(NULL, &player, 1.0f, 2.0f, 3.0f, 4.0f, 30.0,
+                                   (SDL_FlipMode)(SDL_FLIP_HORIZONTAL | SDL_FLIP_VERTICAL));
+    CHECK_INT(rendered.frame, 9);
+    CHECK_INT(rendered.flip, SDL_FLIP_VERTICAL);    /* the animation's horizontal flip undone */
+    CHECK_FLOAT(rendered.x, 1);
+    CHECK_FLOAT(rendered.y, 2);
+    CHECK_FLOAT(rendered.scale_x, 3);
+    CHECK_FLOAT(rendered.scale_y, 4);
+    CHECK_FLOAT(rendered.angle, 30);
+
+    rendered = MakeAnimationSprite(NULL, &player, 1.0f, 2.0f, 1.0f, 1.0f, 0.0, SDL_FLIP_NONE);
+    CHECK_INT(rendered.flip, SDL_FLIP_HORIZONTAL);  /* SPRAT_RenderAnimation(): the animation's flip */
+
+    SPRAT_UpdateSpriteAnimation(&sprite, &player, 0.25f);  /* advanced, then set: wraps to 7 */
+    CHECK_INT(sprite.frame, 7);
+    CHECK_FLOAT(player.time, 0);
+    sprite.flip = SDL_FLIP_NONE;
+    SPRAT_StopAnimation(&player);
+    SPRAT_UpdateAnimation(&player, 0.25f);
+    SPRAT_UpdateSpriteAnimation(&sprite, &player, 0.0f);   /* only sets the sprite */
+    CHECK_INT(sprite.frame, 7);
+    CHECK_INT(sprite.flip, SDL_FLIP_HORIZONTAL);
+    SPRAT_ResumeAnimation(&player);
+    SPRAT_UpdateSpriteAnimation(NULL, &player, 0.25f);     /* no sprite: the player still advances */
+    CHECK_FLOAT(player.time, 0.25f);
+    SPRAT_UpdateSpriteAnimation(&sprite, NULL, 0.25f);     /* ignored */
+    CHECK_INT(sprite.frame, 7);
 }
 
 static void test_animation_pingpong(void)
@@ -2265,8 +2404,17 @@ static void test_render_animation(void)
     static const SPRAT_Slice no_slice = { 0, 0, 0, 0, SPRAT_SLICEMODE_STRETCH, SPRAT_SLICEMODE_STRETCH };
     static const int frames[] = { 0 };
     static const SPRAT_Animation mirrored = { "mirrored", 10, frames, 1, SDL_FLIP_HORIZONTAL, SPRAT_LOOPMODE_REPEAT };
-    SPRAT_AnimationPlayer player;
+    /* Whole-pixel geometry, which the software renderer also draws exactly */
+    static const struct { float x, y, scale_x, scale_y; double angle; SDL_FlipMode flip; } transforms[] = {
+        { 40.0f, 30.0f, 1.0f, 1.0f, 0.0, SDL_FLIP_NONE },
+        { 40.0f, 30.0f, 3.0f, 2.0f, 90.0, SDL_FLIP_HORIZONTAL },
+        { 50.0f, 40.0f, -2.0f, 2.0f, 180.0, SDL_FLIP_VERTICAL },
+        { 50.0f, 40.0f, 2.0f, -1.0f, 270.0, (SDL_FlipMode)(SDL_FLIP_HORIZONTAL | SDL_FLIP_VERTICAL) },
+    };
+    static Uint32 expected_screen[SCREEN][SCREEN];
+    SPRAT_AnimationPlayer player, none;
     canvas *c = make_canvas();
+    size_t i;
 
     /* The animation's flip mirrors the frame around its pivot */
     pack(c, &img, 270, no_slice);
@@ -2276,6 +2424,33 @@ static void test_render_animation(void)
     read_screen();
     CHECK_INT(screen[30 + 4 - 3][40 - (6 - 5) - 1], original_pixel(6, 4));
     CHECK_INT(screen[30 + 4 - 3][40 + (6 - 5)], original_pixel(5 - (6 - 5) - 1, 4));   /* (3, 4), mirrored here */
+
+    /* Rendered transformed, as the sprite of its frame, the flips combined: flipping the
+       mirrored animation horizontally renders it unmirrored */
+    for (i = 0; i < COUNT(transforms); i++) {
+        const SPRAT_Sprite expected = canvas_sprite(c, transforms[i].x, transforms[i].y, transforms[i].scale_x, transforms[i].scale_y,
+                                                    transforms[i].angle, (SDL_FlipMode)(transforms[i].flip ^ SDL_FLIP_HORIZONTAL));
+
+        clear();
+        CHECK(SPRAT_RenderSprite(renderer, &expected));
+        read_screen();
+        SDL_memcpy(expected_screen, screen, sizeof(screen));
+        clear();
+        CHECK(SPRAT_RenderAnimationRotated(renderer, &c->sheet, &player, transforms[i].x, transforms[i].y,
+                                           transforms[i].scale_x, transforms[i].scale_y, transforms[i].angle, transforms[i].flip));
+        read_screen();
+        CHECK(SDL_memcmp(expected_screen, screen, sizeof(screen)) == 0);
+    }
+    clear();
+    CHECK(SPRAT_RenderAnimationRotated(renderer, &c->sheet, &player, 40.0f, 30.0f, 1.0f, 1.0f, 0.0, SDL_FLIP_HORIZONTAL));
+    read_screen();
+    CHECK_INT(screen[30 + 4 - 3][40 + (6 - 5)], original_pixel(6, 4));     /* unmirrored */
+
+    /* An animation without frames renders nothing and succeeds; no player fails */
+    SPRAT_InitAnimationPlayer(&none, NULL);
+    CHECK(SPRAT_RenderAnimationRotated(renderer, &c->sheet, &none, 40.0f, 30.0f, 1.0f, 1.0f, 0.0, SDL_FLIP_NONE));
+    CHECK(!SPRAT_RenderAnimationRotated(renderer, &c->sheet, NULL, 40.0f, 30.0f, 1.0f, 1.0f, 0.0, SDL_FLIP_NONE));
+    CHECK_ERROR("player");
 
     /* A frame that can't be rendered fails the animation's render */
     CHECK(!SPRAT_RenderAnimation(renderer, NULL, &player, 40.0f, 30.0f));
@@ -2663,6 +2838,8 @@ int main(void)
     test_lookups();
     test_animation_player();
     test_animation_pingpong();
+    test_set_animation();
+    test_animation_sprite();
     test_markers_overlap();
     test_markers_overlap_matches_reference();
     test_markers_overlap_at_threshold();

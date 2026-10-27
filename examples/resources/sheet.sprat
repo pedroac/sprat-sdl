@@ -1,5 +1,5 @@
 sprat-raw 2
-sheet 1 1 0 0 1 16 4 36 5 19 574 0: 0:
+sheet 1 1 0 0 1 16 5 36 5 20 578 0: 0:
 atlas 102 134 9:atlas.png 0: 0:
 sprite 0 0 0 56 12 90 0 0 0 0 6 50 0 0 0 0 0 0 0 2 5:sword 15:items/sword.png 0:
 marker 0 6 50 0 0 0 0 5:pivot
@@ -57,3 +57,4 @@ anim 10 0 0 -1 6 5 1 2 6 3 4 3:run
 anim 10 1 0 0 0 8:run-left
 anim 12 0 0 -1 8 8 9 11 13 15 14 12 10 4:spin
 anim 12 0 2 -1 5 8 9 11 13 15 13:spin-pingpong
+anim 10 0 0 -1 1 5 4:idle

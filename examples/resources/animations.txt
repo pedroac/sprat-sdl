@@ -22,3 +22,5 @@ animation "spin-pingpong" 12 pingpong
 - frame "coin/spin_03.png"
 - frame "coin/spin_04.png"
 - frame "coin/spin_05.png"
+animation "idle"
+- frame "hero/run_01.png"

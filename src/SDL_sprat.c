@@ -1624,6 +1624,13 @@ static bool IsFinite(double x)
     return !SDL_isinf(x) && !SDL_isnan(x);
 }
 
+/* Set the animation a player plays, with its loop mode */
+static void SetPlayerAnimation(SPRAT_AnimationPlayer *player, const SPRAT_Animation *animation)
+{
+    player->animation = animation;
+    player->loop_mode = animation ? animation->loop_mode : SPRAT_LOOPMODE_REPEAT;
+}
+
 void SPRAT_InitAnimationPlayer(SPRAT_AnimationPlayer *player, const SPRAT_Animation *animation)
 {
     if (!player) {
@@ -1631,10 +1638,20 @@ void SPRAT_InitAnimationPlayer(SPRAT_AnimationPlayer *player, const SPRAT_Animat
     }
 
     SDL_zerop(player);
-    player->animation = animation;
+    SetPlayerAnimation(player, animation);
     player->speed = 1.0f;
     player->playing = true;
-    player->loop_mode = animation ? animation->loop_mode : SPRAT_LOOPMODE_REPEAT;
+}
+
+void SPRAT_SetAnimation(SPRAT_AnimationPlayer *player, const SPRAT_Animation *animation)
+{
+    /* The one played is left as it is, so it can be set every update */
+    if (!player || player->animation == animation) {
+        return;
+    }
+
+    SetPlayerAnimation(player, animation);
+    SPRAT_PlayAnimation(player);
 }
 
 void SPRAT_UpdateAnimation(SPRAT_AnimationPlayer *player, float seconds)
@@ -1766,22 +1783,61 @@ int SPRAT_GetAnimationFrame(const SPRAT_AnimationPlayer *player)
     return anim->frames[(int)step];
 }
 
+void SPRAT_SetSpriteAnimationFrame(SPRAT_Sprite *sprite, const SPRAT_AnimationPlayer *player)
+{
+    if (!sprite) {
+        return;
+    }
+
+    sprite->frame = SPRAT_GetAnimationFrame(player);
+    sprite->flip = (player && player->animation) ? player->animation->flip : SDL_FLIP_NONE;
+}
+
+void SPRAT_UpdateSpriteAnimation(SPRAT_Sprite *sprite, SPRAT_AnimationPlayer *player, float seconds)
+{
+    if (!player) {
+        return;
+    }
+
+    SPRAT_UpdateAnimation(player, seconds);
+    SPRAT_SetSpriteAnimationFrame(sprite, player);
+}
+
+/* Make the sprite SPRAT_RenderAnimationRotated() renders: the frame shown now, mirrored by flip
+   combined with the animation's flip */
+static SPRAT_Sprite MakeAnimationSprite(const SPRAT_Sheet *sheet, const SPRAT_AnimationPlayer *player,
+                                        float x, float y, float scale_x, float scale_y, double angle, SDL_FlipMode flip)
+{
+    SPRAT_Sprite sprite;
+
+    sprite.sheet = sheet;
+    SPRAT_SetSpriteAnimationFrame(&sprite, player);
+    sprite.x = x;
+    sprite.y = y;
+    sprite.scale_x = scale_x;
+    sprite.scale_y = scale_y;
+    sprite.angle = angle;
+    sprite.flip = (SDL_FlipMode)(sprite.flip ^ flip);
+    return sprite;
+}
+
 bool SPRAT_RenderAnimation(SDL_Renderer *renderer, const SPRAT_Sheet *sheet, const SPRAT_AnimationPlayer *player, float x, float y)
 {
-    SPRAT_Sprite sprite = { NULL, 0, 0.0f, 0.0f, 1.0f, 1.0f, 0.0, SDL_FLIP_NONE };
+    return SPRAT_RenderAnimationRotated(renderer, sheet, player, x, y, 1.0f, 1.0f, 0.0, SDL_FLIP_NONE);
+}
+
+bool SPRAT_RenderAnimationRotated(SDL_Renderer *renderer, const SPRAT_Sheet *sheet, const SPRAT_AnimationPlayer *player,
+                                  float x, float y, float scale_x, float scale_y, double angle, SDL_FlipMode flip)
+{
+    SPRAT_Sprite sprite;
 
     if (!player) {
         return SDL_InvalidParamError("player");
     }
 
-    sprite.frame = SPRAT_GetAnimationFrame(player);
+    sprite = MakeAnimationSprite(sheet, player, x, y, scale_x, scale_y, angle, flip);
     if (sprite.frame < 0) {
         return true;    /* Nothing to show */
     }
-
-    sprite.sheet = sheet;
-    sprite.x = x;
-    sprite.y = y;
-    sprite.flip = player->animation->flip;
     return SPRAT_RenderSprite(renderer, &sprite);
 }

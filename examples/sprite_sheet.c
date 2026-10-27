@@ -34,15 +34,20 @@ static SDL_Renderer *renderer = NULL;
 static SPRAT_Sheet *sheet = NULL;
 
 /* Look names up once, then render by index, and play animations with a player each */
-static SPRAT_AnimationPlayer run, run_left, hero_run;
+static SPRAT_AnimationPlayer run, run_left;
 static SPRAT_AnimationPlayer spins[NUM_SPINS];
 static const float spin_speeds[NUM_SPINS] = { 1.0f, 0.5f, -1.0f };   /* normal, half speed, reversed */
 static SPRAT_AnimationPlayer coin_spin;
 static SPRAT_AnimationPlayer coin_pingpong;
-static int idle, panel;
+static int panel;
 
 /* Sprites are where frames are: rendered there, and their markers placed there */
 static SPRAT_Sprite hero, sword;
+
+/* The hero keeps a sprite and a player together, switching between its idle and run animations */
+static const SPRAT_Animation *hero_idle, *hero_run;
+static SPRAT_AnimationPlayer hero_animation;
+static bool facing_left = false;
 static SPRAT_Sprite coins[NUM_COINS];
 
 /* Coins along the hero's path, at the height of the hero's chest and of the sword's swing */
@@ -113,17 +118,19 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 
     SPRAT_InitAnimationPlayer(&run, SPRAT_GetAnimationFromName(sheet, "run"));
     SPRAT_InitAnimationPlayer(&run_left, SPRAT_GetAnimationFromName(sheet, "run-left"));
-    hero_run = run;
     for (i = 0; i < NUM_SPINS; i++) {
         SPRAT_InitAnimationPlayer(&spins[i], SPRAT_GetAnimationFromName(sheet, "spin"));
         spins[i].speed = spin_speeds[i];
     }
     SPRAT_InitAnimationPlayer(&coin_spin, SPRAT_GetAnimationFromName(sheet, "spin"));
     SPRAT_InitAnimationPlayer(&coin_pingpong, SPRAT_GetAnimationFromName(sheet, "spin-pingpong"));
-    idle = SPRAT_GetFrameFromName(sheet, "hero/run_01.png");
     panel = SPRAT_GetFrameFromName(sheet, "panel");
 
-    hero = (SPRAT_Sprite){ sheet, idle, SCREEN_WIDTH / 2.0f, ground_y, HERO_SCALE, HERO_SCALE, 0.0, SDL_FLIP_NONE };
+    hero_idle = SPRAT_GetAnimationFromName(sheet, "idle");
+    hero_run = run.animation;
+    SPRAT_InitAnimationPlayer(&hero_animation, hero_idle);
+
+    hero = (SPRAT_Sprite){ sheet, -1, SCREEN_WIDTH / 2.0f, ground_y, HERO_SCALE, HERO_SCALE, 0.0, SDL_FLIP_NONE };
     sword = (SPRAT_Sprite){ sheet, SPRAT_GetFrameFromName(sheet, "sword"), 0.0f, 0.0f, SWORD_SCALE, SWORD_SCALE, 0.0, SDL_FLIP_NONE };
     for (i = 0; i < NUM_COINS; i++) {
         coins[i] = (SPRAT_Sprite){ sheet, -1, coin_x[i], coin_y, COIN_SCALE, COIN_SCALE, 0.0, SDL_FLIP_NONE };
@@ -190,22 +197,16 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     /* Update */
     if (keys[SDL_SCANCODE_RIGHT]) {
         hero.x += HERO_SPEED * dt;
-        hero.flip = SDL_FLIP_NONE;
+        facing_left = false;
         running = true;
     }
     if (keys[SDL_SCANCODE_LEFT]) {
         hero.x -= HERO_SPEED * dt;
-        hero.flip = SDL_FLIP_HORIZONTAL;
+        facing_left = true;
         running = true;
     }
     hero.x = SDL_clamp(hero.x, 0.0f, (float)SCREEN_WIDTH);
 
-    if (running) {
-        SPRAT_ResumeAnimation(&hero_run);
-        SPRAT_UpdateAnimation(&hero_run, dt);
-    } else {
-        SPRAT_StopAnimation(&hero_run);
-    }
     SPRAT_UpdateAnimation(&run, dt);
     SPRAT_UpdateAnimation(&run_left, dt);
     for (i = 0; i < NUM_SPINS; i++) {
@@ -218,8 +219,11 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         swing_time -= dt;
     }
 
-    /* The run animation's first frame doubles as the idle pose */
-    hero.frame = running ? SPRAT_GetAnimationFrame(&hero_run) : idle;
+    /* Setting the animation every update restarts it only when it changes. The player sets the
+       hero's frame and flip; facing left mirrors with the scale, which it leaves alone */
+    SPRAT_SetAnimation(&hero_animation, running ? hero_run : hero_idle);
+    SPRAT_UpdateSpriteAnimation(&hero, &hero_animation, dt);
+    hero.scale_x = facing_left ? -HERO_SCALE : HERO_SCALE;
     coin_frame = SPRAT_GetAnimationFrame(&coin_spin);
 
     /* The sword is held by the hero's "hand" marker, mirrored with the hero */
@@ -231,7 +235,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     sword.x = grip.x;
     sword.y = grip.y;
     sword.angle = 60.0f - ((swing_time > 0.0f) ? 150.0f * (1.0f - swing_time / SWING_TIME) : 0.0f);
-    if (hero.flip) {
+    if (facing_left) {
         sword.angle = -sword.angle;
     }
 
@@ -241,7 +245,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     blade = SPRAT_GetSpriteMarker(&sword, "blade");
     coin_hitbox = SPRAT_GetFrameMarker(sheet, coin_frame, "hitbox");   /* the coins spin together */
     for (i = 0; i < NUM_COINS; i++) {
-        coins[i].frame = coin_frame;
+        SPRAT_SetSpriteAnimationFrame(&coins[i], &coin_spin);
         if (coin_away[i] > 0.0f) {
             coin_away[i] -= dt;
             continue;
@@ -317,11 +321,11 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     SDL_RenderDebugText(renderer, 20.0f, (float)SCREEN_HEIGHT - 30.0f, text);
 
     /* Controlled hero, with the sword rendered behind when facing left */
-    if (hero.flip) {
+    if (facing_left) {
         SPRAT_RenderSprite(renderer, &sword);
     }
     SPRAT_RenderSprite(renderer, &hero);
-    if (!hero.flip) {
+    if (!facing_left) {
         SPRAT_RenderSprite(renderer, &sword);
     }
 
