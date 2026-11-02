@@ -504,8 +504,6 @@ try a given renderer, set `SDL_RENDER_DRIVER` (`opengl`, `vulkan`, `gpu`,
 
 ## Limitations
 
-- Normal and collision maps are not loaded. sprat-lib gives their paths if
-  you need them.
 - Atlas paths are used as written, so a sheet from an untrusted source could
   name any file. Load such a sheet without a renderer, check each
   `sheet->atlases[i].path` with sprat-lib's `sprat_path_is_safe()`, and load the
