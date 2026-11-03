@@ -73,7 +73,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
 
 ## Building
 
-sprat-sdl needs SDL 3.4 or newer and sprat-lib 0.7 or newer. With CMake,
+sprat-sdl needs SDL 3.4 or newer and sprat-lib 0.9 or newer. With CMake,
 `sprat-sdl::sprat-sdl` brings SDL3 along:
 
 ```cmake

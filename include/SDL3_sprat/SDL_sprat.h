@@ -76,7 +76,7 @@ extern "C" {
  *
  * \since This macro is available since sprat-sdl 0.1.0.
  */
-#define SDL_SPRAT_MINOR_VERSION   3
+#define SDL_SPRAT_MINOR_VERSION   4
 
 /**
  * The current micro (or patchlevel) version of sprat-sdl headers.

@@ -46,13 +46,13 @@ endif()
 if(NOT TARGET sprat::sprat)
     FetchContent_Declare(sprat
         GIT_REPOSITORY https://github.com/pedroac/sprat-lib.git
-        GIT_TAG 97d87dba91f20dcbe9c2c45b2bdb749ccaa9a849   # sprat-lib main, v0.7.0
-        FIND_PACKAGE_ARGS 0.7
+        GIT_TAG 7d61101ca3cba31170eaf7df990eab6f6c31c1ee   # sprat-lib main, v0.9.0
+        FIND_PACKAGE_ARGS 0.9
     )
     FetchContent_MakeAvailable(sprat)
     get_target_property(SPRAT_SDL_SPRAT_VERSION sprat::sprat VERSION)
-    if(SPRAT_SDL_SPRAT_VERSION AND SPRAT_SDL_SPRAT_VERSION VERSION_LESS 0.7)
-        message(FATAL_ERROR "sprat-sdl needs sprat-lib 0.7 or newer, found ${SPRAT_SDL_SPRAT_VERSION}")
+    if(SPRAT_SDL_SPRAT_VERSION AND SPRAT_SDL_SPRAT_VERSION VERSION_LESS 0.9)
+        message(FATAL_ERROR "sprat-sdl needs sprat-lib 0.9 or newer, found ${SPRAT_SDL_SPRAT_VERSION}")
     endif()
 endif()
 
