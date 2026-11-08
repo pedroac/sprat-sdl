@@ -46,6 +46,8 @@ the two the same, and the API of each true to its engine.
   falls back to the software renderer, which only draws whole-pixel geometry exactly,
   and skips the rest (`SPRAT_TEST_REQUIRE_HARDWARE=1` makes that a failure).
   `tests/lsan.supp` silences the GPU driver's and D-Bus's leaks at exit.
+- `docs/guide.md`: the user documentation (build options, API, behavior). `README.md`
+  stays a short overview that links to it.
 - `examples/sprite_sheet.c`: the demo, written with SDL's main callbacks.
   `examples/resources/` holds a sheet packed by sprat-cli (`make_resources.sh`) from
   frames drawn by `make_sources.py`. `examples/sprite_sheet.png` is its screenshot.
