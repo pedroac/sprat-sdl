@@ -76,7 +76,7 @@ extern "C" {
  *
  * \since This macro is available since sprat-sdl 0.1.0.
  */
-#define SDL_SPRAT_MINOR_VERSION   5
+#define SDL_SPRAT_MINOR_VERSION   6
 
 /**
  * The current micro (or patchlevel) version of sprat-sdl headers.
@@ -290,6 +290,7 @@ typedef struct SPRAT_Sheet
     int num_animations;             /**< number of animations */
     const SPRAT_Animation *animations; /**< the animations, in sheet order, NULL when there are none */
     float scale;                    /**< the scale the art was packed at: render at 1.0f / scale for its original size */
+    int num_puppets;                /**< number of puppets (cutout rigs), see SPRAT_CreatePuppet() (since sprat-sdl 0.6.0) */
 } SPRAT_Sheet;
 
 /**
@@ -369,6 +370,48 @@ typedef struct SPRAT_Sprite
     SDL_FlipMode flip;              /**< the mirroring around the pivot */
 } SPRAT_Sprite;
 
+
+/**
+ * A cutout puppet placed on the screen: parts joined by their markers, each
+ * showing one of its variants (a sprite or an animation), posed by poses and
+ * animated by sequences of them, played and rendered as sprat-gui's Puppet
+ * workspace previews it.
+ *
+ * Create one per puppet on screen with SPRAT_CreatePuppet(). Every update,
+ * reset its pose, apply the sequences and poses it plays (later ones win
+ * where they set the same part), then render it:
+ *
+ * ```c
+ * SPRAT_UpdatePuppet(kid, seconds);          // the animations its parts show
+ * kid->x = x;
+ * kid->flip = facing_left ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
+ * SPRAT_ResetPuppetPose(kid);
+ * SPRAT_ApplyPuppetSequence(kid, walk, walk_time);
+ * SPRAT_RenderPuppet(renderer, kid);
+ * ```
+ *
+ * `x`, `y`, `scale`, `angle` and `flip` place the whole puppet around its
+ * pivot, as they place a SPRAT_Sprite; set them directly. Its parts' own
+ * scales, fades and tints come from its pose.
+ *
+ * \since This struct is available since sprat-sdl 0.6.0.
+ *
+ * \sa SPRAT_CreatePuppet
+ * \sa SPRAT_RenderPuppet
+ */
+typedef struct SPRAT_Puppet
+{
+    const SPRAT_Sheet *sheet;       /**< the sheet the puppet belongs to */
+    const char *name;               /**< the puppet's name, UTF-8 */
+    int num_parts;                  /**< number of parts, in render order (the first at the back) */
+    float x;                        /**< the x coordinate of the puppet's pivot */
+    float y;                        /**< the y coordinate of the puppet's pivot */
+    float scale;                    /**< the scale around the pivot, 1.0f by default */
+    double angle;                   /**< the clockwise rotation around the pivot, in degrees */
+    SDL_FlipMode flip;              /**< the mirroring around the pivot */
+    float time;                     /**< seconds its parts' animations have played, see SPRAT_UpdatePuppet() */
+    struct SPRAT_PuppetPose *pose;  /**< the pose of each part (private) */
+} SPRAT_Puppet;
 
 /**
  * Load a sprite sheet from a file, and its atlases from the file's folder.
@@ -953,6 +996,248 @@ extern SDL_DECLSPEC bool SDLCALL SPRAT_RenderAnimation(SDL_Renderer *renderer, c
  */
 extern SDL_DECLSPEC bool SDLCALL SPRAT_RenderAnimationRotated(SDL_Renderer *renderer, const SPRAT_Sheet *sheet, const SPRAT_AnimationPlayer *player,
                                                               float x, float y, float scale_x, float scale_y, double angle, SDL_FlipMode flip);
+
+/**
+ * Create a puppet of a sheet, in its rest pose, with its pivot at (0, 0).
+ *
+ * In the rest pose every part shows its first variant, unturned, and
+ * positioned parts are where the rig puts them.
+ *
+ * \param sheet the sheet.
+ * \param name the puppet's name.
+ * \returns a new puppet, or NULL on failure; call SDL_GetError() for more
+ *          information. Destroy it with SPRAT_DestroyPuppet() before the
+ *          sheet.
+ *
+ * \threadsafety It is safe to call this function from any thread.
+ *
+ * \since This function is available since sprat-sdl 0.6.0.
+ *
+ * \sa SPRAT_DestroyPuppet
+ */
+extern SDL_DECLSPEC SPRAT_Puppet * SDLCALL SPRAT_CreatePuppet(const SPRAT_Sheet *sheet, const char *name);
+
+/**
+ * Destroy a puppet.
+ *
+ * \param puppet the puppet, or NULL.
+ *
+ * \threadsafety It is safe to call this function from any thread.
+ *
+ * \since This function is available since sprat-sdl 0.6.0.
+ *
+ * \sa SPRAT_CreatePuppet
+ */
+extern SDL_DECLSPEC void SDLCALL SPRAT_DestroyPuppet(SPRAT_Puppet *puppet);
+
+/**
+ * Get a part of a puppet by name.
+ *
+ * \param puppet the puppet.
+ * \param name the part's name.
+ * \returns the index of the part, or -1 when the puppet has none with that
+ *          name; call SDL_GetError() for more information.
+ *
+ * \threadsafety It is safe to call this function from any thread.
+ *
+ * \since This function is available since sprat-sdl 0.6.0.
+ *
+ * \sa SPRAT_GetPuppetPartSprite
+ */
+extern SDL_DECLSPEC int SDLCALL SPRAT_GetPuppetPartFromName(const SPRAT_Puppet *puppet, const char *name);
+
+/**
+ * Get a pose of a puppet by name.
+ *
+ * \param puppet the puppet.
+ * \param name the pose's name.
+ * \returns the index of the pose, or -1 when the puppet has none with that
+ *          name; call SDL_GetError() for more information.
+ *
+ * \threadsafety It is safe to call this function from any thread.
+ *
+ * \since This function is available since sprat-sdl 0.6.0.
+ *
+ * \sa SPRAT_ApplyPuppetPose
+ */
+extern SDL_DECLSPEC int SDLCALL SPRAT_GetPuppetPoseFromName(const SPRAT_Puppet *puppet, const char *name);
+
+/**
+ * Get a sequence of a puppet by name.
+ *
+ * \param puppet the puppet.
+ * \param name the sequence's name.
+ * \returns the index of the sequence, or -1 when the puppet has none with
+ *          that name; call SDL_GetError() for more information.
+ *
+ * \threadsafety It is safe to call this function from any thread.
+ *
+ * \since This function is available since sprat-sdl 0.6.0.
+ *
+ * \sa SPRAT_ApplyPuppetSequence
+ */
+extern SDL_DECLSPEC int SDLCALL SPRAT_GetPuppetSequenceFromName(const SPRAT_Puppet *puppet, const char *name);
+
+/**
+ * Reset a puppet to its rest pose.
+ *
+ * \param puppet the puppet.
+ * \returns true on success or false on failure; call SDL_GetError() for more
+ *          information.
+ *
+ * \threadsafety Don't use the same puppet from several threads at once.
+ *
+ * \since This function is available since sprat-sdl 0.6.0.
+ *
+ * \sa SPRAT_ApplyPuppetPose
+ * \sa SPRAT_ApplyPuppetSequence
+ */
+extern SDL_DECLSPEC bool SDLCALL SPRAT_ResetPuppetPose(SPRAT_Puppet *puppet);
+
+/**
+ * Apply a pose to a puppet: set what the pose sets, over its current pose.
+ *
+ * \param puppet the puppet.
+ * \param pose the index of the pose.
+ * \returns true on success or false on failure; call SDL_GetError() for more
+ *          information.
+ *
+ * \threadsafety Don't use the same puppet from several threads at once.
+ *
+ * \since This function is available since sprat-sdl 0.6.0.
+ *
+ * \sa SPRAT_GetPuppetPoseFromName
+ */
+extern SDL_DECLSPEC bool SDLCALL SPRAT_ApplyPuppetPose(SPRAT_Puppet *puppet, int pose);
+
+/**
+ * Apply a sequence to a puppet as it is some seconds after it started, over
+ * the pose it started from.
+ *
+ * Reset the pose and apply sequences every update, so each starts from the
+ * same pose. A sequence plays whole frames at its fps: frame `k` of a step's
+ * `in` moves the values its pose sets `(k + 1) / in` of the way (parts that
+ * ease by step wait for the last `in` frame), variants switch when the pose
+ * arrives, then the step holds. Ping-pong plays the steps back again, a loop
+ * starts each cycle where the last ended, and once holds its last frame.
+ *
+ * \param puppet the puppet.
+ * \param sequence the index of the sequence.
+ * \param seconds the seconds since the sequence started.
+ * \returns true on success or false on failure; call SDL_GetError() for more
+ *          information.
+ *
+ * \threadsafety Don't use the same puppet from several threads at once.
+ *
+ * \since This function is available since sprat-sdl 0.6.0.
+ *
+ * \sa SPRAT_GetPuppetSequenceFromName
+ * \sa SPRAT_IsPuppetSequenceFinished
+ */
+extern SDL_DECLSPEC bool SDLCALL SPRAT_ApplyPuppetSequence(SPRAT_Puppet *puppet, int sequence, float seconds);
+
+/**
+ * Get the seconds one cycle of a puppet's sequence takes.
+ *
+ * \param puppet the puppet.
+ * \param sequence the index of the sequence.
+ * \returns the duration of one cycle (for ping-pong, the way back too), or a
+ *          negative value on failure; call SDL_GetError() for more
+ *          information.
+ *
+ * \threadsafety It is safe to call this function from any thread.
+ *
+ * \since This function is available since sprat-sdl 0.6.0.
+ */
+extern SDL_DECLSPEC float SDLCALL SPRAT_GetPuppetSequenceDuration(const SPRAT_Puppet *puppet, int sequence);
+
+/**
+ * Check if a puppet's sequence that plays once has played its whole cycle.
+ *
+ * \param puppet the puppet.
+ * \param sequence the index of the sequence.
+ * \param seconds the seconds since the sequence started.
+ * \returns true when it has; looping sequences never finish.
+ *
+ * \threadsafety It is safe to call this function from any thread.
+ *
+ * \since This function is available since sprat-sdl 0.6.0.
+ */
+extern SDL_DECLSPEC bool SDLCALL SPRAT_IsPuppetSequenceFinished(const SPRAT_Puppet *puppet, int sequence, float seconds);
+
+/**
+ * Advance the animations a puppet's parts show.
+ *
+ * Each animation plays from the puppet's `time`, at its own fps and loop
+ * mode.
+ *
+ * \param puppet the puppet.
+ * \param seconds the seconds to advance by.
+ *
+ * \threadsafety Don't use the same puppet from several threads at once.
+ *
+ * \since This function is available since sprat-sdl 0.6.0.
+ */
+extern SDL_DECLSPEC void SDLCALL SPRAT_UpdatePuppet(SPRAT_Puppet *puppet, float seconds);
+
+/**
+ * Get a part of a puppet as the sprite it is rendered as.
+ *
+ * The sprite's markers and collisions work as any sprite's. A part isn't
+ * rendered when it shows nothing, hangs by a marker its frame lacks (a missing
+ * "pivot" marker is the frame's pivot), or hangs from a part that isn't
+ * rendered; its sprite's frame is then -1. Every part is placed, since a part
+ * follows its parents: to render them all, use SPRAT_RenderPuppet().
+ *
+ * \param puppet the puppet.
+ * \param part the index of the part.
+ * \param sprite filled in with the part's sprite.
+ * \returns true on success or false on failure; call SDL_GetError() for more
+ *          information.
+ *
+ * \threadsafety Don't use the same puppet from several threads at once.
+ *
+ * \since This function is available since sprat-sdl 0.6.0.
+ *
+ * \sa SPRAT_GetPuppetPartColor
+ */
+extern SDL_DECLSPEC bool SDLCALL SPRAT_GetPuppetPartSprite(SPRAT_Puppet *puppet, int part, SPRAT_Sprite *sprite);
+
+/**
+ * Get the color a part of a puppet is rendered with: its tint and opacity.
+ *
+ * SPRAT_RenderPuppet() sets it as the texture's color and alpha modulation.
+ *
+ * \param puppet the puppet.
+ * \param part the index of the part.
+ * \param color filled in with the part's color, each channel 0.0f to 1.0f.
+ * \returns true on success or false on failure; call SDL_GetError() for more
+ *          information.
+ *
+ * \threadsafety It is safe to call this function from any thread.
+ *
+ * \since This function is available since sprat-sdl 0.6.0.
+ */
+extern SDL_DECLSPEC bool SDLCALL SPRAT_GetPuppetPartColor(const SPRAT_Puppet *puppet, int part, SDL_FColor *color);
+
+/**
+ * Render a puppet's parts in order, each tinted and faded by its pose.
+ *
+ * Each part's color is combined with its atlas texture's own color and alpha
+ * modulation, which are restored afterwards.
+ *
+ * \param renderer the renderer to draw with.
+ * \param puppet the puppet.
+ * \returns true on success or false on failure; call SDL_GetError() for more
+ *          information.
+ *
+ * \threadsafety This function should only be called on the main thread.
+ *
+ * \since This function is available since sprat-sdl 0.6.0.
+ *
+ * \sa SPRAT_GetPuppetPartSprite
+ */
+extern SDL_DECLSPEC bool SDLCALL SPRAT_RenderPuppet(SDL_Renderer *renderer, SPRAT_Puppet *puppet);
 
 /* Ends C function definitions when using C++ */
 #ifdef __cplusplus

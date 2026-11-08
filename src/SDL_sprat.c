@@ -30,6 +30,14 @@ typedef struct DrawCall
     SDL_FlipMode flip;
 } DrawCall;
 
+/* A sheet's allocation starts with its SPRAT_Sheet, followed by what the program doesn't see:
+   sprat-lib's sheet, kept when it has puppets, which sprat-lib plays from its own model */
+typedef struct SheetStorage
+{
+    SPRAT_Sheet sheet;
+    sprat_sheet *raw;
+} SheetStorage;
+
 /* The size of the buffers that hold escaped text for error messages; longer text is cut short */
 #define ESCAPED_SIZE 256
 
@@ -152,7 +160,7 @@ static SPRAT_Sheet *ConvertSheet(const sprat_sheet *raw)
         return NULL;
     }
 
-    if (!AddSize(&sheet_size, 1, sizeof(SPRAT_Sheet), true) ||
+    if (!AddSize(&sheet_size, 1, sizeof(SheetStorage), true) ||
         !AddSize(&atlases_size, raw->atlas_count, sizeof(SPRAT_Atlas), true) ||
         !AddSize(&frames_size, raw->sprite_count, sizeof(SPRAT_Frame), true) ||
         !AddSize(&animations_size, raw->animation_count, sizeof(SPRAT_Animation), true) ||
@@ -422,7 +430,14 @@ static SPRAT_Sheet *LoadSheetData(SDL_Renderer *renderer, const void *data, size
     }
 
     sheet = ConvertSheet(raw);
-    sprat_sheet_free(raw);
+
+    /* Keep sprat-lib's sheet for its puppets, which sprat-lib plays */
+    if (sheet && raw->puppet_count > 0 && raw->puppet_count <= SDL_MAX_SINT32) {
+        sheet->num_puppets = (int)raw->puppet_count;
+        ((SheetStorage *)sheet)->raw = raw;
+    } else {
+        sprat_sheet_free(raw);
+    }
 
     if (sheet && renderer && !LoadAtlases(renderer, sheet, atlas_dir)) {
         SPRAT_DestroySheet(sheet);
@@ -498,7 +513,8 @@ void SPRAT_DestroySheet(SPRAT_Sheet *sheet)
         }
     }
 
-    /* The whole sheet lives in one allocation, starting at the SPRAT_Sheet */
+    /* The whole sheet lives in one allocation, starting at the SPRAT_Sheet; puppets stay in sprat-lib's */
+    sprat_sheet_free(((SheetStorage *)sheet)->raw);
     SDL_free(sheet);
 }
 
@@ -1624,6 +1640,8 @@ static bool IsFinite(double x)
     return !SDL_isinf(x) && !SDL_isnan(x);
 }
 
+static int GetAnimationStepFrame(const SPRAT_AnimationPlayer *player, double step);
+
 /* Set the animation a player plays, with its loop mode */
 static void SetPlayerAnimation(SPRAT_AnimationPlayer *player, const SPRAT_Animation *animation)
 {
@@ -1745,23 +1763,27 @@ bool SPRAT_IsAnimationFinished(const SPRAT_AnimationPlayer *player)
 
 int SPRAT_GetAnimationFrame(const SPRAT_AnimationPlayer *player)
 {
-    const SPRAT_Animation *anim;
-    double count, position, step;
+    double position, step;
 
     if (!player || !player->animation) {
         return -1;
     }
 
-    anim = player->animation;
-    count = GetAnimationStepCount(player);
-    if (count <= 0.0 || !anim->frames) {
-        return -1;
-    }
-
-    position = (double)player->time * anim->fps;
+    position = (double)player->time * player->animation->fps;
     step = (player->speed < 0.0f) ? SDL_ceil(position) - 1.0 : SDL_floor(position);
-    if (!IsFinite(step)) {
-        return -1;  /* NaN or infinite time: (int)step would be undefined */
+    return GetAnimationStepFrame(player, step);
+}
+
+/* Get the frame index a player's animation shows at a step of its pass, -1 if none. Repeating
+   animations start over; the others hold their end. With ping-pong, steps past the last frame walk
+   the frames back */
+static int GetAnimationStepFrame(const SPRAT_AnimationPlayer *player, double step)
+{
+    const SPRAT_Animation *anim = player->animation;
+    double count = GetAnimationStepCount(player);
+
+    if (count <= 0.0 || !anim->frames || !IsFinite(step)) {
+        return -1;  /* Nothing to show, or NaN or infinite time: (int)step would be undefined */
     }
 
     if (!(player->loop_mode & SPRAT_LOOPMODE_ONCE)) {
@@ -1840,4 +1862,412 @@ bool SPRAT_RenderAnimationRotated(SDL_Renderer *renderer, const SPRAT_Sheet *she
         return true;    /* Nothing to show */
     }
     return SPRAT_RenderSprite(renderer, &sprite);
+}
+
+/* Puppets: sprat-lib plays them, from the sprat sheet SPRAT_LoadSheet() keeps for them, as
+   sprat-gui previews them; here they are placed on the screen and rendered as sprites */
+
+/* The pose of a puppet's parts, and where they were last placed, after its SPRAT_Puppet in
+   one allocation. Its sheet and rig are what the arrays were sized for: the SPRAT_Puppet's
+   fields only describe them, and a program could change those */
+struct SPRAT_PuppetPose
+{
+    const SPRAT_Sheet *sheet;
+    const sprat_sheet *raw;
+    const sprat_puppet *rig;
+    sprat_part_state *states;   /* what each part shows and how, after poses */
+    sprat_part_frame *frames;   /* the sprite each part shows at the puppet's time */
+    sprat_part_place *places;   /* where each part goes, in the puppet's space */
+    int *frame_indexes;         /* the frame each part is rendered with, -1 for none */
+};
+
+/* Check a puppet, setting the error when it is not valid */
+static bool CheckPuppet(const SPRAT_Puppet *puppet)
+{
+    if (!puppet || !puppet->pose) {
+        return SDL_InvalidParamError("puppet");
+    }
+    return true;
+}
+
+SPRAT_Puppet *SPRAT_CreatePuppet(const SPRAT_Sheet *sheet, const char *name)
+{
+    const sprat_sheet *raw;
+    char escaped[ESCAPED_SIZE];
+    size_t i;
+
+    if (!sheet) {
+        SDL_InvalidParamError("sheet");
+        return NULL;
+    }
+    if (!name) {
+        SDL_InvalidParamError("name");
+        return NULL;
+    }
+
+    raw = ((const SheetStorage *)sheet)->raw;
+    for (i = 0; raw && i < raw->puppet_count; i++) {
+        const sprat_puppet *rig = &raw->puppets[i];
+        size_t count = rig->part_count > 0 ? rig->part_count : 1;
+        size_t puppet_size = 0, pose_size = 0, states_size = 0, frames_size = 0, places_size = 0;
+        size_t indexes_size = 0, total_size = 0;
+        Uint8 *block, *section;
+        SPRAT_Puppet *puppet;
+        struct SPRAT_PuppetPose *pose;
+
+        if (SDL_strcmp(rig->name, name) != 0) {
+            continue;
+        }
+
+        if (rig->part_count > SDL_MAX_SINT32 ||
+            !AddSize(&puppet_size, 1, sizeof(SPRAT_Puppet), true) ||
+            !AddSize(&pose_size, 1, sizeof(struct SPRAT_PuppetPose), true) ||
+            !AddSize(&states_size, count, sizeof(sprat_part_state), true) ||
+            !AddSize(&frames_size, count, sizeof(sprat_part_frame), true) ||
+            !AddSize(&places_size, count, sizeof(sprat_part_place), true) ||
+            !AddSize(&indexes_size, count, sizeof(int), true) ||
+            !AddSize(&total_size, puppet_size, 1, false) ||
+            !AddSize(&total_size, pose_size, 1, false) ||
+            !AddSize(&total_size, states_size, 1, false) ||
+            !AddSize(&total_size, frames_size, 1, false) ||
+            !AddSize(&total_size, places_size, 1, false) ||
+            !AddSize(&total_size, indexes_size, 1, false)) {
+            SDL_SetError("Puppet %s is too large", Escape(escaped, name));
+            return NULL;
+        }
+
+        block = (Uint8 *)SDL_calloc(1, total_size);
+        if (!block) {
+            SDL_OutOfMemory();
+            return NULL;
+        }
+
+        section = block;
+        puppet = (SPRAT_Puppet *)section;                       section += puppet_size;
+        pose = (struct SPRAT_PuppetPose *)section;              section += pose_size;
+        pose->states = (sprat_part_state *)section;             section += states_size;
+        pose->frames = (sprat_part_frame *)section;             section += frames_size;
+        pose->places = (sprat_part_place *)section;             section += places_size;
+        pose->frame_indexes = (int *)section;
+        pose->sheet = sheet;
+        pose->raw = raw;
+        pose->rig = rig;
+
+        puppet->sheet = sheet;
+        puppet->name = rig->name;
+        puppet->num_parts = (int)rig->part_count;
+        puppet->scale = 1.0f;
+        puppet->pose = pose;
+        sprat_puppet_rest(rig, pose->states);
+        return puppet;
+    }
+
+    SDL_SetError("Couldn't find puppet %s", Escape(escaped, name));
+    return NULL;
+}
+
+void SPRAT_DestroyPuppet(SPRAT_Puppet *puppet)
+{
+    /* The puppet and its pose are one allocation */
+    SDL_free(puppet);
+}
+
+int SPRAT_GetPuppetPartFromName(const SPRAT_Puppet *puppet, const char *name)
+{
+    char escaped[ESCAPED_SIZE];
+    int i;
+
+    if (!CheckPuppet(puppet)) {
+        return -1;
+    }
+    if (!name) {
+        SDL_InvalidParamError("name");
+        return -1;
+    }
+
+    for (i = 0; (size_t)i < puppet->pose->rig->part_count; i++) {
+        if (SDL_strcmp(puppet->pose->rig->parts[i].name, name) == 0) {
+            return i;
+        }
+    }
+
+    SDL_SetError("Couldn't find part %s", Escape(escaped, name));
+    return -1;
+}
+
+int SPRAT_GetPuppetPoseFromName(const SPRAT_Puppet *puppet, const char *name)
+{
+    char escaped[ESCAPED_SIZE];
+    size_t i;
+
+    if (!CheckPuppet(puppet)) {
+        return -1;
+    }
+    if (!name) {
+        SDL_InvalidParamError("name");
+        return -1;
+    }
+
+    for (i = 0; i < puppet->pose->rig->pose_count && i <= SDL_MAX_SINT32; i++) {
+        if (SDL_strcmp(puppet->pose->rig->poses[i].name, name) == 0) {
+            return (int)i;
+        }
+    }
+
+    SDL_SetError("Couldn't find pose %s", Escape(escaped, name));
+    return -1;
+}
+
+int SPRAT_GetPuppetSequenceFromName(const SPRAT_Puppet *puppet, const char *name)
+{
+    char escaped[ESCAPED_SIZE];
+    size_t i;
+
+    if (!CheckPuppet(puppet)) {
+        return -1;
+    }
+    if (!name) {
+        SDL_InvalidParamError("name");
+        return -1;
+    }
+
+    for (i = 0; i < puppet->pose->rig->sequence_count && i <= SDL_MAX_SINT32; i++) {
+        if (SDL_strcmp(puppet->pose->rig->sequences[i].name, name) == 0) {
+            return (int)i;
+        }
+    }
+
+    SDL_SetError("Couldn't find sequence %s", Escape(escaped, name));
+    return -1;
+}
+
+bool SPRAT_ResetPuppetPose(SPRAT_Puppet *puppet)
+{
+    if (!CheckPuppet(puppet)) {
+        return false;
+    }
+
+    sprat_puppet_rest(puppet->pose->rig, puppet->pose->states);
+    return true;
+}
+
+bool SPRAT_ApplyPuppetPose(SPRAT_Puppet *puppet, int pose)
+{
+    if (!CheckPuppet(puppet)) {
+        return false;
+    }
+    if (pose < 0 || !sprat_puppet_apply_pose(puppet->pose->rig, (size_t)pose, puppet->pose->states)) {
+        return SDL_InvalidParamError("pose");
+    }
+    return true;
+}
+
+bool SPRAT_ApplyPuppetSequence(SPRAT_Puppet *puppet, int sequence, float seconds)
+{
+    if (!CheckPuppet(puppet)) {
+        return false;
+    }
+    if (sequence < 0 || !sprat_puppet_apply_sequence(puppet->pose->rig, (size_t)sequence, (double)seconds, puppet->pose->states)) {
+        return SDL_InvalidParamError("sequence");
+    }
+    return true;
+}
+
+/* Get a puppet's sequence, setting the error when the index is not valid */
+static const sprat_sequence *GetPuppetSequence(const SPRAT_Puppet *puppet, int sequence)
+{
+    if (!CheckPuppet(puppet)) {
+        return NULL;
+    }
+    if (sequence < 0 || (size_t)sequence >= puppet->pose->rig->sequence_count) {
+        SDL_InvalidParamError("sequence");
+        return NULL;
+    }
+    return &puppet->pose->rig->sequences[sequence];
+}
+
+float SPRAT_GetPuppetSequenceDuration(const SPRAT_Puppet *puppet, int sequence)
+{
+    const sprat_sequence *q = GetPuppetSequence(puppet, sequence);
+
+    return q ? (float)sprat_sequence_duration(q) : -1.0f;
+}
+
+bool SPRAT_IsPuppetSequenceFinished(const SPRAT_Puppet *puppet, int sequence, float seconds)
+{
+    const sprat_sequence *q = GetPuppetSequence(puppet, sequence);
+
+    return q && sprat_sequence_is_finished(q, (double)seconds);
+}
+
+void SPRAT_UpdatePuppet(SPRAT_Puppet *puppet, float seconds)
+{
+    if (puppet && IsFinite(seconds)) {
+        puppet->time += seconds;
+    }
+}
+
+/* Place every part of a puppet in its space: what each shows at the puppet's time, then where.
+   Parts that can't be placed (a missing marker, or hanging from such a part) aren't rendered */
+static void PlacePuppet(SPRAT_Puppet *puppet)
+{
+    struct SPRAT_PuppetPose *pose = puppet->pose;
+    int i;
+
+    for (i = 0; (size_t)i < pose->rig->part_count; i++) {
+        const sprat_part *part = &pose->rig->parts[i];
+        const sprat_part_state *state = &pose->states[i];
+        int frame = -1;
+        SDL_FlipMode flip = SDL_FLIP_NONE;
+
+        if (state->variant < part->variant_count) {
+            const sprat_variant *variant = &part->variants[state->variant];
+
+            if (variant->kind == SPRAT_VARIANT_SPRITE) {
+                frame = (int)variant->index;
+            } else {
+                /* Animations play on the puppet's clock, each at its own fps and loop mode, stepping
+                   as sprat-gui's preview does: a time on a step's start shows that step */
+                SPRAT_AnimationPlayer player;
+                const SPRAT_Animation *anim = &pose->sheet->animations[variant->index];
+
+                SPRAT_InitAnimationPlayer(&player, anim);
+                frame = GetAnimationStepFrame(&player, SDL_floor((double)puppet->time * anim->fps + 1e-9));
+                flip = anim->flip;
+            }
+        }
+
+        pose->frame_indexes[i] = frame;
+        pose->frames[i].sprite = frame >= 0 ? &pose->raw->sprites[frame] : NULL;
+        pose->frames[i].flip = (unsigned)flip;
+    }
+
+    sprat_puppet_place(pose->rig, pose->states, pose->frames, pose->places);
+
+    for (i = 0; (size_t)i < pose->rig->part_count; i++) {
+        if (!pose->places[i].placed) {
+            pose->frame_indexes[i] = -1;
+        }
+    }
+}
+
+/* Make a placed part's sprite: its frame's pivot where the part's transform and the puppet's put
+   it, with the same scale and angle. sprat-lib places parts by any anchor, and a sprite by its
+   pivot; with no skew, the same transform maps both. The puppet's flip mirrors the part's turn,
+   since a mirror reverses turns */
+static void GetPlacedPartSprite(const SPRAT_Puppet *puppet, int part, SPRAT_Sprite *sprite)
+{
+    const struct SPRAT_PuppetPose *pose = puppet->pose;
+    const sprat_part_place *place = &pose->places[part];
+    int frame = pose->frame_indexes[part];
+    double flip_x = (puppet->flip & SDL_FLIP_HORIZONTAL) ? -1.0 : 1.0;
+    double flip_y = (puppet->flip & SDL_FLIP_VERTICAL) ? -1.0 : 1.0;
+    double cos_angle, sin_angle, x, y;
+    sprat_vec2 pivot, at;
+
+    sprite->sheet = pose->sheet;
+    sprite->frame = frame;
+    sprite->x = puppet->x;
+    sprite->y = puppet->y;
+    sprite->scale_x = puppet->scale;
+    sprite->scale_y = puppet->scale;
+    sprite->angle = puppet->angle;
+    sprite->flip = SDL_FLIP_NONE;
+    if (frame < 0) {
+        return;
+    }
+
+    pivot.x = pose->sheet->frames[frame].pivot.x;
+    pivot.y = pose->sheet->frames[frame].pivot.y;
+    at = sprat_part_place_point(place, pivot);
+    x = flip_x * at.x * puppet->scale;
+    y = flip_y * at.y * puppet->scale;
+    GetAngleCosSin(puppet->angle, &cos_angle, &sin_angle);
+
+    sprite->x = (float)(puppet->x + cos_angle * x - sin_angle * y);
+    sprite->y = (float)(puppet->y + sin_angle * x + cos_angle * y);
+    sprite->angle = puppet->angle + ((flip_x * flip_y < 0.0) ? -place->rotation : place->rotation);
+    sprite->scale_x = (float)(flip_x * puppet->scale * place->scale_x);
+    sprite->scale_y = (float)(flip_y * puppet->scale * place->scale_y);
+}
+
+bool SPRAT_GetPuppetPartSprite(SPRAT_Puppet *puppet, int part, SPRAT_Sprite *sprite)
+{
+    if (!CheckPuppet(puppet)) {
+        return false;
+    }
+    if (part < 0 || (size_t)part >= puppet->pose->rig->part_count) {
+        return SDL_InvalidParamError("part");
+    }
+    if (!sprite) {
+        return SDL_InvalidParamError("sprite");
+    }
+
+    PlacePuppet(puppet);
+    GetPlacedPartSprite(puppet, part, sprite);
+    return true;
+}
+
+bool SPRAT_GetPuppetPartColor(const SPRAT_Puppet *puppet, int part, SDL_FColor *color)
+{
+    const sprat_part_state *state;
+
+    if (!CheckPuppet(puppet)) {
+        return false;
+    }
+    if (part < 0 || (size_t)part >= puppet->pose->rig->part_count) {
+        return SDL_InvalidParamError("part");
+    }
+    if (!color) {
+        return SDL_InvalidParamError("color");
+    }
+
+    state = &puppet->pose->states[part];
+    color->r = state->tint_r;
+    color->g = state->tint_g;
+    color->b = state->tint_b;
+    color->a = state->opacity;
+    return true;
+}
+
+bool SPRAT_RenderPuppet(SDL_Renderer *renderer, SPRAT_Puppet *puppet)
+{
+    bool result = true;
+    int i;
+
+    if (!CheckPuppet(puppet)) {
+        return false;
+    }
+
+    PlacePuppet(puppet);
+
+    for (i = 0; (size_t)i < puppet->pose->rig->part_count && result; i++) {
+        SPRAT_Sprite sprite;
+        SDL_FColor color;
+        SDL_Texture *texture;
+        float r, g, b, a;
+
+        GetPlacedPartSprite(puppet, i, &sprite);
+        if (sprite.frame < 0) {
+            continue;   /* Not rendered */
+        }
+        texture = GetFrameTexture(sprite.sheet, sprite.frame);
+        if (!texture) {
+            return false;
+        }
+
+        /* The part's tint and opacity combine with the texture's own modulation, restored after,
+           even when setting them half fails */
+        SPRAT_GetPuppetPartColor(puppet, i, &color);
+        if (!SDL_GetTextureColorModFloat(texture, &r, &g, &b) || !SDL_GetTextureAlphaModFloat(texture, &a)) {
+            return false;
+        }
+        result = SDL_SetTextureColorModFloat(texture, r * color.r, g * color.g, b * color.b) &&
+                 SDL_SetTextureAlphaModFloat(texture, a * color.a) &&
+                 SPRAT_RenderSprite(renderer, &sprite);
+        SDL_SetTextureColorModFloat(texture, r, g, b);
+        SDL_SetTextureAlphaModFloat(texture, a);
+    }
+
+    return result;
 }

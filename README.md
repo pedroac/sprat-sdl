@@ -73,8 +73,8 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
 
 ## Building
 
-sprat-sdl needs SDL 3.4 or newer and sprat-lib 0.14 or newer (which reads the
-sheets sprat-cli writes today). With CMake,
+sprat-sdl needs SDL 3.4 or newer and sprat-lib 0.15 or newer (which reads the
+sheets sprat-cli writes today and plays puppets). With CMake,
 `sprat-sdl::sprat-sdl` brings SDL3 along:
 
 ```cmake
@@ -151,6 +151,22 @@ void SPRAT_UpdateSpriteAnimation(SPRAT_Sprite *sprite, SPRAT_AnimationPlayer *pl
 bool SPRAT_RenderAnimation(SDL_Renderer *renderer, const SPRAT_Sheet *sheet, const SPRAT_AnimationPlayer *player, float x, float y);
 bool SPRAT_RenderAnimationRotated(SDL_Renderer *renderer, const SPRAT_Sheet *sheet, const SPRAT_AnimationPlayer *player,
                                   float x, float y, float scale_x, float scale_y, double angle, SDL_FlipMode flip);
+
+/* Puppets */
+SPRAT_Puppet *SPRAT_CreatePuppet(const SPRAT_Sheet *sheet, const char *name);
+void SPRAT_DestroyPuppet(SPRAT_Puppet *puppet);
+int SPRAT_GetPuppetPartFromName(const SPRAT_Puppet *puppet, const char *name);
+int SPRAT_GetPuppetPoseFromName(const SPRAT_Puppet *puppet, const char *name);
+int SPRAT_GetPuppetSequenceFromName(const SPRAT_Puppet *puppet, const char *name);
+bool SPRAT_ResetPuppetPose(SPRAT_Puppet *puppet);
+bool SPRAT_ApplyPuppetPose(SPRAT_Puppet *puppet, int pose);
+bool SPRAT_ApplyPuppetSequence(SPRAT_Puppet *puppet, int sequence, float seconds);
+float SPRAT_GetPuppetSequenceDuration(const SPRAT_Puppet *puppet, int sequence);
+bool SPRAT_IsPuppetSequenceFinished(const SPRAT_Puppet *puppet, int sequence, float seconds);
+void SPRAT_UpdatePuppet(SPRAT_Puppet *puppet, float seconds);
+bool SPRAT_GetPuppetPartSprite(SPRAT_Puppet *puppet, int part, SPRAT_Sprite *sprite);
+bool SPRAT_GetPuppetPartColor(const SPRAT_Puppet *puppet, int part, SDL_FColor *color);
+bool SPRAT_RenderPuppet(SDL_Renderer *renderer, SPRAT_Puppet *puppet);
 ```
 
 Every function is documented in [`SDL_sprat.h`](include/SDL3_sprat/SDL_sprat.h),
@@ -356,6 +372,52 @@ such as idle, add an animation to the sheet, as the example does. After
 sprite. `SPRAT_SetSpriteAnimationFrame()` sets a sprite without advancing the
 player, for several sprites sharing one.
 
+### Puppets
+
+A puppet is a cutout rig from sprat-cli's `--puppets` file: parts joined by
+their markers, each showing one of its variants (a sprite or an animation),
+posed by poses and animated by sequences of them. sprat-sdl plays and renders
+them exactly as sprat-gui's Puppet workspace previews them, through sprat-lib's
+player, and as sprat-raylib draws them.
+
+Create one `SPRAT_Puppet` per puppet on screen. Every update, reset its pose,
+apply the sequences and poses it plays (later ones win where they set the same
+part), then render it:
+
+```c
+SPRAT_Puppet *kid = SPRAT_CreatePuppet(sheet, "kid");
+int walk = SPRAT_GetPuppetSequenceFromName(kid, "walk");
+int smile = SPRAT_GetPuppetPoseFromName(kid, "smile");
+...
+SPRAT_UpdatePuppet(kid, seconds);          /* the animations its parts show */
+kid->x = x;                                /* where its pivot goes */
+kid->y = ground_y;
+kid->flip = facing_left ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
+SPRAT_ResetPuppetPose(kid);
+SPRAT_ApplyPuppetSequence(kid, walk, walk_time);   /* seconds since the walk started */
+if (happy) {
+    SPRAT_ApplyPuppetPose(kid, smile);
+}
+SPRAT_RenderPuppet(renderer, kid);
+...
+SPRAT_DestroyPuppet(kid);
+```
+
+A sequence plays whole frames at its fps: frame `k` of a step's `in` moves the
+values its pose sets `(k + 1) / in` of the way (parts that ease by step wait for
+the last `in` frame), variants switch when the pose arrives, then the step holds.
+Ping-pong plays the steps back again, a loop starts each cycle where the last
+ended, and once holds its last frame (`SPRAT_IsPuppetSequenceFinished()`).
+`kid->time` clocks the animations its parts show, each at its own fps.
+
+`x`, `y`, `scale`, `angle` and `flip` place the whole puppet, as they place a
+`SPRAT_Sprite`. Parts are scaled by their pose, and rendered with its tint and
+opacity as the texture's color and alpha modulation (combined with the
+texture's own, which is restored). A part hanging by a marker its frame lacks
+isn't rendered, nor is what hangs from it. `SPRAT_GetPuppetPartSprite()` gives
+a part as the `SPRAT_Sprite` it is rendered as, so its markers and collisions
+work as any sprite's.
+
 ### Markers
 
 Markers (`pivot`, hitboxes, hands, spawn points...) are in original-image
@@ -464,7 +526,10 @@ Destroy sheets before the renderer their textures belong to.
 
 A sheet is one allocation (with `SDL_calloc()`, so `SDL_SetMemoryFunctions()`
 applies), starting at the `SPRAT_Sheet` itself, and sprat-lib's parsed sheet is
-freed before the loader returns. Every array and string of a sheet points into
+freed before the loader returns, unless the sheet has puppets: sprat-lib plays
+them from its own model, which the sheet keeps until `SPRAT_DestroySheet()`.
+Each `SPRAT_CreatePuppet()` makes one more allocation, released by
+`SPRAT_DestroyPuppet()`. Every array and string of a sheet points into
 that allocation and stays valid until `SPRAT_DestroySheet()`.
 
 ## Example

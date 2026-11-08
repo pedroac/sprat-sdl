@@ -2843,6 +2843,266 @@ static void test_load_current_format(void)
     SPRAT_DestroySheet(sheet);
 }
 
+/* ---- Puppets -------------------------------------------------------------- */
+
+/* Sprites: body (pivot 4,8, a "neck" at 4,0 and a "hand" at 8,4), head (pivot and "base"
+ * at 2,4), arm (a "base" at 0,1) and head-2 (a "base" at 2,3); blink plays head and head-2
+ * at 8 fps, and back is blink mirrored. The body stands at 10,20; the arm, drawn first,
+ * hangs from its hand and the head from its neck. "wave" raises the arm, moves, stretches,
+ * fades and reddens the body, and shows the head's back moved 2 right; "go" waves over 4
+ * frames at 10 fps and holds 2. In "q", b hangs by a marker its sprite lacks, and c from b. */
+static const char *puppet_sheet =
+    "sprat-raw 10\n"
+    "sheet 1 0 0 1 4 2 2 0 5 0 2 6 7 4 1 3 1 1 0 151\n"
+    "atlas 8 8 0:\n"
+    "sprite 0 0 0 8 8 0 0 0 0 0 1 4 8 0 0 0 0 0 0 0 -1 2 4:body 8:body.png\n"
+    "marker 0 4 0 0 0 0 0 4:neck\n"
+    "marker 0 8 4 0 0 0 0 4:hand\n"
+    "sprite 0 0 0 4 4 0 0 0 0 0 1 2 4 0 0 0 0 0 0 0 -1 1 4:head 8:head.png\n"
+    "marker 0 2 4 0 0 0 0 4:base\n"
+    "sprite 0 4 0 4 2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1 1 3:arm 7:arm.png\n"
+    "marker 0 0 1 0 0 0 0 4:base\n"
+    "sprite 0 0 4 4 4 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1 1 6:head-2 10:head-2.png\n"
+    "marker 0 2 3 0 0 0 0 4:base\n"
+    "anim 8 0 0 -1 2 1 3 5:blink\n"
+    "anim 8 1 0 0 0 4:back\n"
+    "puppet 3 2 1 1 1:p\n"
+    "part 1 0 0 0 1 3:arm\nvariant 0 2 3:arm\n"
+    "part -1 1 10 20 1 4:body\nvariant 0 0 4:body\n"
+    "part 1 0 0 0 2 4:head\nvariant 0 1 4:head\nvariant 1 1 4:back\n"
+    "joint 0 1 0 0 0 0 0 4:base 4:hand\n"
+    "joint 2 1 0 0 0 0 0 4:base 4:neck\n"
+    "pose 3 4:wave\n"
+    "set 0 -1 1 90 0 0 0 0 0 0 0 1 1 0 1 0 255 255 255\n"
+    "set 1 -1 0 0 0 0 0 1 30 20 1 2 1 1 0.5 1 255 0 0\n"
+    "set 2 1 0 0 1 2 0 0 0 0 0 1 1 0 1 0 255 255 255\n"
+    "sequence 10 0 1 2:go\nstep 0 4 2 0 0\n"
+    "puppet 3 2 0 0 1:q\n"
+    "part -1 1 0 0 1 1:a\nvariant 0 0 1:a\n"
+    "part 0 0 0 0 1 1:b\nvariant 0 2 1:b\n"
+    "part 1 0 0 0 1 1:c\nvariant 0 1 1:c\n"
+    "joint 1 0 0 0 0 0 0 4:nope 4:hand\n"
+    "joint 2 1 0 0 0 0 0 4:base 4:base\n";
+
+enum { ARM, BODY, HEAD };
+
+static void test_puppet_lookups(void)
+{
+    SPRAT_Sheet *sheet = load_text(puppet_sheet);
+    SPRAT_Puppet *puppet;
+
+    if (!sheet) {
+        return;
+    }
+    CHECK_INT(sheet->num_puppets, 2);
+
+    puppet = SPRAT_CreatePuppet(sheet, "p");
+    CHECK(puppet != NULL);
+    if (puppet) {
+        CHECK_STR(puppet->name, "p");
+        CHECK_INT(puppet->num_parts, 3);
+        CHECK_FLOAT(puppet->scale, 1);
+        CHECK_INT(SPRAT_GetPuppetPartFromName(puppet, "head"), HEAD);
+        CHECK_INT(SPRAT_GetPuppetPartFromName(puppet, "tail"), -1);
+        CHECK_ERROR("Couldn't find part tail");
+        CHECK_INT(SPRAT_GetPuppetPoseFromName(puppet, "wave"), 0);
+        CHECK_INT(SPRAT_GetPuppetPoseFromName(puppet, "nod"), -1);
+        CHECK_INT(SPRAT_GetPuppetSequenceFromName(puppet, "go"), 0);
+        CHECK_INT(SPRAT_GetPuppetSequenceFromName(puppet, "stop"), -1);
+        CHECK_FLOAT(SPRAT_GetPuppetSequenceDuration(puppet, 0), 0.6);
+        CHECK(SPRAT_GetPuppetSequenceDuration(puppet, 1) < 0.0f);
+        CHECK(!SPRAT_IsPuppetSequenceFinished(puppet, 0, 100.0f));     /* it loops */
+        CHECK(!SPRAT_ApplyPuppetPose(puppet, 1));
+        CHECK_ERROR("pose");
+        CHECK(!SPRAT_ApplyPuppetSequence(puppet, -1, 0.0f));
+        SPRAT_DestroyPuppet(puppet);
+    }
+
+    CHECK(SPRAT_CreatePuppet(sheet, "r") == NULL);
+    CHECK_ERROR("Couldn't find puppet r");
+    CHECK(SPRAT_CreatePuppet(NULL, "p") == NULL);
+    CHECK(!SPRAT_ResetPuppetPose(NULL));
+    SPRAT_DestroyPuppet(NULL);
+    SPRAT_DestroySheet(sheet);
+
+    /* A sheet without puppets */
+    sheet = load_text("sprat-raw 1\nsheet 1 0 0 0 1 0 0 0 0 0 0 0: 0:\natlas 4 4 0: 0: 0:\n");
+    if (sheet) {
+        CHECK_INT(sheet->num_puppets, 0);
+        CHECK(SPRAT_CreatePuppet(sheet, "p") == NULL);
+        SPRAT_DestroySheet(sheet);
+    }
+}
+
+static void test_puppet_parts(void)
+{
+    SPRAT_Sheet *sheet = load_text(puppet_sheet);
+    SPRAT_Puppet *puppet;
+    SPRAT_Sprite sprite;
+    SDL_FColor color;
+    SDL_FPoint tip = { 4, 1 }, at;
+
+    if (!sheet) {
+        return;
+    }
+    puppet = SPRAT_CreatePuppet(sheet, "p");
+    if (!puppet) {
+        failures++;
+        SPRAT_DestroySheet(sheet);
+        return;
+    }
+
+    puppet->x = 100;
+    puppet->y = 50;
+    CHECK(SPRAT_ApplyPuppetPose(puppet, 0));
+
+    /* The body's pivot at its position, stretched 2 wide, reddened and half faded */
+    CHECK(SPRAT_GetPuppetPartSprite(puppet, BODY, &sprite));
+    CHECK_INT(sprite.frame, 0);
+    CHECK_FLOAT(sprite.x, 130);
+    CHECK_FLOAT(sprite.y, 70);
+    CHECK_FLOAT(sprite.scale_x, 2);
+    CHECK_FLOAT(sprite.scale_y, 1);
+    CHECK_FLOAT(sprite.angle, 0);
+    CHECK(SPRAT_GetPuppetPartColor(puppet, BODY, &color));
+    CHECK_FLOAT(color.r, 1);
+    CHECK_FLOAT(color.g, 0);
+    CHECK_FLOAT(color.a, 0.5);
+
+    /* The arm's base on the stretched body's hand, at (38, 16): its pivot (0, 0) is 1 above the
+       base, which the quarter turn puts 1 right */
+    CHECK(SPRAT_GetPuppetPartSprite(puppet, ARM, &sprite));
+    CHECK_INT(sprite.frame, 2);
+    CHECK_FLOAT(sprite.x, 139);
+    CHECK_FLOAT(sprite.y, 66);
+    CHECK_FLOAT(sprite.angle, 90);
+    CHECK(SPRAT_GetSpritePoint(&sprite, &tip, &at));
+    CHECK_FLOAT(at.x, 138);
+    CHECK_FLOAT(at.y, 70);
+
+    /* The head shows its back, mirrored: blink's first frame, then its second at 8 fps, on the
+       neck moved 2 body pixels right, which the stretch makes 4 */
+    CHECK(SPRAT_GetPuppetPartSprite(puppet, HEAD, &sprite));
+    CHECK_INT(sprite.frame, 1);
+    CHECK_FLOAT(sprite.x, 134);
+    CHECK_FLOAT(sprite.y, 62);
+    CHECK_FLOAT(sprite.scale_x, -1);
+    SPRAT_UpdatePuppet(puppet, 0.125f);
+    SPRAT_UpdatePuppet(puppet, NAN);    /* ignored */
+    CHECK(SPRAT_GetPuppetPartSprite(puppet, HEAD, &sprite));
+    CHECK_INT(sprite.frame, 3);
+
+    /* Mirrored, the puppet reverses every turn */
+    puppet->time = 0.0f;
+    puppet->flip = SDL_FLIP_HORIZONTAL;
+    CHECK(SPRAT_GetPuppetPartSprite(puppet, BODY, &sprite));
+    CHECK_FLOAT(sprite.x, 70);
+    CHECK_FLOAT(sprite.scale_x, -2);
+    CHECK(SPRAT_GetPuppetPartSprite(puppet, ARM, &sprite));
+    CHECK_FLOAT(sprite.x, 61);
+    CHECK_FLOAT(sprite.y, 66);
+    CHECK_FLOAT(sprite.angle, -90);
+    CHECK(SPRAT_GetSpritePoint(&sprite, &tip, &at));
+    CHECK_FLOAT(at.x, 62);
+    CHECK_FLOAT(at.y, 70);
+
+    /* Scaled 2 and turned a quarter: (30, 20) goes to (60, 40), then to (-40, 60) */
+    puppet->flip = SDL_FLIP_NONE;
+    puppet->scale = 2.0f;
+    puppet->angle = 90.0;
+    CHECK(SPRAT_GetPuppetPartSprite(puppet, BODY, &sprite));
+    CHECK_FLOAT(sprite.x, 60);
+    CHECK_FLOAT(sprite.y, 110);
+    CHECK_FLOAT(sprite.angle, 90);
+    CHECK_FLOAT(sprite.scale_x, 4);
+    CHECK_FLOAT(sprite.scale_y, 2);
+
+    /* A sequence over the rest pose: one frame in, the arm is halfway up */
+    puppet->scale = 1.0f;
+    puppet->angle = 0.0;
+    CHECK(SPRAT_ResetPuppetPose(puppet));
+    CHECK(SPRAT_GetPuppetPartSprite(puppet, ARM, &sprite));
+    CHECK_FLOAT(sprite.angle, 0);
+    CHECK(SPRAT_ApplyPuppetSequence(puppet, 0, 0.1f));
+    CHECK(SPRAT_GetPuppetPartSprite(puppet, ARM, &sprite));
+    CHECK_FLOAT(sprite.angle, 45);
+    CHECK(!SPRAT_GetPuppetPartSprite(puppet, 3, &sprite));
+    SPRAT_DestroyPuppet(puppet);
+
+    /* A part hanging by a marker its frame lacks isn't rendered, nor is what hangs from it */
+    puppet = SPRAT_CreatePuppet(sheet, "q");
+    if (puppet) {
+        CHECK(SPRAT_GetPuppetPartSprite(puppet, 0, &sprite));
+        CHECK_INT(sprite.frame, 0);
+        CHECK(SPRAT_GetPuppetPartSprite(puppet, 1, &sprite));
+        CHECK_INT(sprite.frame, -1);
+        CHECK(SPRAT_GetPuppetPartSprite(puppet, 2, &sprite));
+        CHECK_INT(sprite.frame, -1);
+        SPRAT_DestroyPuppet(puppet);
+    }
+    SPRAT_DestroySheet(sheet);
+}
+
+/* A part renders in its pose's tint, and the atlas texture keeps its own modulation */
+static void test_render_puppet(void)
+{
+    SPRAT_Sheet *sheet = load_text(
+        "sprat-raw 10\n"
+        "sheet 1 0 0 1 1 0 1 0 0 0 0 1 1 0 1 1 0 0 0 10\n"
+        "atlas 4 4 0:\n"
+        "sprite 0 0 0 4 4 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1 0 1:s 5:s.png\n"
+        "puppet 1 0 1 0 1:p\n"
+        "part -1 1 2 2 1 1:a\nvariant 0 0 1:s\n"
+        "pose 1 1:q\nset 0 -1 0 0 0 0 0 0 0 0 0 1 1 0 1 1 255 128 0\n");
+    SDL_Surface *white = SDL_CreateSurface(4, 4, SDL_PIXELFORMAT_RGBA8888);
+    SDL_Surface *shot;
+    SPRAT_Puppet *puppet;
+    Uint8 r = 0, g = 0, b = 0, a = 0;
+    float mr, mg, mb, ma;
+
+    if (!sheet || !white) {
+        failures++;
+        SPRAT_DestroySheet(sheet);
+        SDL_DestroySurface(white);
+        return;
+    }
+    SDL_FillSurfaceRect(white, NULL, SDL_MapSurfaceRGBA(white, 255, 255, 255, 255));
+    sheet->atlases[0].texture = SDL_CreateTextureFromSurface(renderer, white);
+    SDL_DestroySurface(white);
+    SDL_SetTextureColorModFloat(sheet->atlases[0].texture, 1.0f, 1.0f, 0.5f);
+
+    puppet = SPRAT_CreatePuppet(sheet, "p");
+    if (puppet) {
+        CHECK(SPRAT_ApplyPuppetPose(puppet, 0));
+        puppet->x = 8;
+        puppet->y = 8;
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+        CHECK(SPRAT_RenderPuppet(renderer, puppet));
+
+        /* The part covers (10, 10) to (14, 14): white, tinted orange */
+        shot = SDL_RenderReadPixels(renderer, NULL);
+        if (shot) {
+            SDL_ReadSurfacePixel(shot, 12, 12, &r, &g, &b, &a);
+            CHECK_INT(r, 255);
+            CHECK(g >= 127 && g <= 129);
+            CHECK_INT(b, 0);
+            SDL_ReadSurfacePixel(shot, 8, 8, &r, &g, &b, &a);
+            CHECK_INT(r, 0);
+            SDL_DestroySurface(shot);
+        }
+
+        SDL_GetTextureColorModFloat(sheet->atlases[0].texture, &mr, &mg, &mb);
+        SDL_GetTextureAlphaModFloat(sheet->atlases[0].texture, &ma);
+        CHECK_FLOAT(mr, 1);
+        CHECK_FLOAT(mg, 1);
+        CHECK_FLOAT(mb, 0.5);
+        CHECK_FLOAT(ma, 1);
+        SPRAT_DestroyPuppet(puppet);
+    }
+    SPRAT_DestroySheet(sheet);
+}
+
 int main(void)
 {
     hook_memory_functions();
@@ -2880,6 +3140,9 @@ int main(void)
     test_sprite_point_matches_render();
     test_9grid_matches_original();
     test_example_renders_its_sources();
+    test_puppet_lookups();
+    test_puppet_parts();
+    test_render_puppet();
 
     if (!hardware) {
         const char *require = SDL_getenv("SPRAT_TEST_REQUIRE_HARDWARE");
