@@ -2814,8 +2814,8 @@ static void test_version(void)
     CHECK(!SDL_SPRAT_VERSION_ATLEAST(1, 0, 0));
 }
 
-/* Sheets from today's spratconvert (sprat-raw 10) carry puppets, which sprat-sdl
-   doesn't play yet: they still load, with their frames and animations */
+/* Sheets from today's spratconvert (sprat-raw 10) carry puppets: they load with
+   their frames and animations (the puppet tests cover the puppets) */
 static void test_load_current_format(void)
 {
     SPRAT_Sheet *sheet = load_text(

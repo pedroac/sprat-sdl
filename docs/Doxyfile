@@ -1,0 +1,18 @@
+# Generate the API pages with: doxygen docs/Doxyfile
+# The output goes to docs/api/ (gitignored).
+PROJECT_NAME           = sprat-sdl
+PROJECT_BRIEF          = Load and draw sprat sprite sheets with SDL3
+OUTPUT_DIRECTORY       = docs
+HTML_OUTPUT            = api
+INPUT                  = include/SDL3_sprat/SDL_sprat.h
+FILE_PATTERNS          = *.h
+RECURSIVE              = NO
+GENERATE_LATEX         = NO
+GENERATE_TREEVIEW      = NO
+HAVE_DOT               = NO
+QUIET                  = YES
+OPTIMIZE_OUTPUT_FOR_C  = YES
+EXTRACT_ALL            = YES
+FULL_PATH_NAMES        = NO
+STRIP_FROM_PATH        = include/SDL3_sprat
+ALIASES               += threadsafety="\par Thread safety:"

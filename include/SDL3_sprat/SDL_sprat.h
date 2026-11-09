@@ -85,7 +85,7 @@ extern "C" {
  *
  * \since This macro is available since sprat-sdl 0.1.0.
  */
-#define SDL_SPRAT_MICRO_VERSION   0
+#define SDL_SPRAT_MICRO_VERSION   1
 
 /**
  * This is the version number macro for the current sprat-sdl version.
@@ -113,6 +113,7 @@ extern "C" {
  * \returns sprat-sdl version.
  *
  * \since This function is available since sprat-sdl 0.1.0.
+ * \anchor SPRAT_Version
  */
 extern SDL_DECLSPEC int SDLCALL SPRAT_Version(void);
 
@@ -440,6 +441,7 @@ typedef struct SPRAT_Puppet
  *
  * \sa SPRAT_LoadSheet_IO
  * \sa SPRAT_DestroySheet
+ * \anchor SPRAT_LoadSheet
  */
 extern SDL_DECLSPEC SPRAT_Sheet * SDLCALL SPRAT_LoadSheet(SDL_Renderer *renderer, const char *file);
 
@@ -465,6 +467,7 @@ extern SDL_DECLSPEC SPRAT_Sheet * SDLCALL SPRAT_LoadSheet(SDL_Renderer *renderer
  *
  * \sa SPRAT_LoadSheet
  * \sa SPRAT_DestroySheet
+ * \anchor SPRAT_LoadSheet_IO
  */
 extern SDL_DECLSPEC SPRAT_Sheet * SDLCALL SPRAT_LoadSheet_IO(SDL_Renderer *renderer, SDL_IOStream *src, bool closeio, const char *atlas_dir);
 
@@ -480,6 +483,7 @@ extern SDL_DECLSPEC SPRAT_Sheet * SDLCALL SPRAT_LoadSheet_IO(SDL_Renderer *rende
  * \since This function is available since sprat-sdl 0.1.0.
  *
  * \sa SPRAT_LoadSheet
+ * \anchor SPRAT_DestroySheet
  */
 extern SDL_DECLSPEC void SDLCALL SPRAT_DestroySheet(SPRAT_Sheet *sheet);
 
@@ -499,6 +503,7 @@ extern SDL_DECLSPEC void SDLCALL SPRAT_DestroySheet(SPRAT_Sheet *sheet);
  * \threadsafety It is safe to call this function from any thread.
  *
  * \since This function is available since sprat-sdl 0.1.0.
+ * \anchor SPRAT_GetFrameFromName
  */
 extern SDL_DECLSPEC int SDLCALL SPRAT_GetFrameFromName(const SPRAT_Sheet *sheet, const char *name);
 
@@ -517,6 +522,7 @@ extern SDL_DECLSPEC int SDLCALL SPRAT_GetFrameFromName(const SPRAT_Sheet *sheet,
  * \since This function is available since sprat-sdl 0.1.0.
  *
  * \sa SPRAT_GetSpriteMarker
+ * \anchor SPRAT_GetFrameMarker
  */
 extern SDL_DECLSPEC const SPRAT_Marker * SDLCALL SPRAT_GetFrameMarker(const SPRAT_Sheet *sheet, int frame, const char *name);
 
@@ -540,6 +546,7 @@ extern SDL_DECLSPEC const SPRAT_Marker * SDLCALL SPRAT_GetFrameMarker(const SPRA
  * \sa SPRAT_GetFrameMarker
  * \sa SPRAT_GetMarkerCenter
  * \sa SPRAT_MarkersOverlap
+ * \anchor SPRAT_GetSpriteMarker
  */
 extern SDL_DECLSPEC const SPRAT_Marker * SDLCALL SPRAT_GetSpriteMarker(const SPRAT_Sprite *sprite, const char *name);
 
@@ -562,6 +569,7 @@ extern SDL_DECLSPEC const SPRAT_Marker * SDLCALL SPRAT_GetSpriteMarker(const SPR
  *
  * \sa SPRAT_GetMarkerCenter
  * \sa SPRAT_RenderSprite
+ * \anchor SPRAT_GetSpritePoint
  */
 extern SDL_DECLSPEC bool SDLCALL SPRAT_GetSpritePoint(const SPRAT_Sprite *sprite, const SDL_FPoint *point, SDL_FPoint *result);
 
@@ -590,6 +598,7 @@ extern SDL_DECLSPEC bool SDLCALL SPRAT_GetSpritePoint(const SPRAT_Sprite *sprite
  *
  * \sa SPRAT_GetSpriteMarker
  * \sa SPRAT_MarkersOverlap
+ * \anchor SPRAT_GetMarkerCenter
  */
 extern SDL_DECLSPEC bool SDLCALL SPRAT_GetMarkerCenter(const SPRAT_Sprite *sprite, const SPRAT_Marker *marker, SDL_FPoint *result);
 
@@ -624,6 +633,7 @@ extern SDL_DECLSPEC bool SDLCALL SPRAT_GetMarkerCenter(const SPRAT_Sprite *sprit
  *
  * \sa SPRAT_GetSpriteMarker
  * \sa SPRAT_GetMarkerCenter
+ * \anchor SPRAT_GetMarkerOutline
  */
 extern SDL_DECLSPEC int SDLCALL SPRAT_GetMarkerOutline(const SPRAT_Sprite *sprite, const SPRAT_Marker *marker, SDL_FPoint *points, int max_points);
 
@@ -654,6 +664,7 @@ extern SDL_DECLSPEC int SDLCALL SPRAT_GetMarkerOutline(const SPRAT_Sprite *sprit
  * \since This function is available since sprat-sdl 0.1.0.
  *
  * \sa SPRAT_GetSpriteMarker
+ * \anchor SPRAT_MarkersOverlap
  */
 extern SDL_DECLSPEC bool SDLCALL SPRAT_MarkersOverlap(const SPRAT_Sprite *sprite_a, const SPRAT_Marker *marker_a, const SPRAT_Sprite *sprite_b, const SPRAT_Marker *marker_b);
 
@@ -677,6 +688,7 @@ extern SDL_DECLSPEC bool SDLCALL SPRAT_MarkersOverlap(const SPRAT_Sprite *sprite
  * \since This function is available since sprat-sdl 0.1.0.
  *
  * \sa SPRAT_RenderSprite
+ * \anchor SPRAT_RenderFrame
  */
 extern SDL_DECLSPEC bool SDLCALL SPRAT_RenderFrame(SDL_Renderer *renderer, const SPRAT_Sheet *sheet, int frame, float x, float y);
 
@@ -697,6 +709,7 @@ extern SDL_DECLSPEC bool SDLCALL SPRAT_RenderFrame(SDL_Renderer *renderer, const
  *
  * \sa SPRAT_RenderFrame
  * \sa SPRAT_GetSpritePoint
+ * \anchor SPRAT_RenderSprite
  */
 extern SDL_DECLSPEC bool SDLCALL SPRAT_RenderSprite(SDL_Renderer *renderer, const SPRAT_Sprite *sprite);
 
@@ -722,6 +735,7 @@ extern SDL_DECLSPEC bool SDLCALL SPRAT_RenderSprite(SDL_Renderer *renderer, cons
  * \threadsafety This function should only be called on the main thread.
  *
  * \since This function is available since sprat-sdl 0.1.0.
+ * \anchor SPRAT_RenderFrame9Grid
  */
 extern SDL_DECLSPEC bool SDLCALL SPRAT_RenderFrame9Grid(SDL_Renderer *renderer, const SPRAT_Sheet *sheet, int frame, float scale, const SDL_FRect *dstrect);
 
@@ -739,6 +753,7 @@ extern SDL_DECLSPEC bool SDLCALL SPRAT_RenderFrame9Grid(SDL_Renderer *renderer, 
  * \since This function is available since sprat-sdl 0.1.0.
  *
  * \sa SPRAT_InitAnimationPlayer
+ * \anchor SPRAT_GetAnimationFromName
  */
 extern SDL_DECLSPEC const SPRAT_Animation * SDLCALL SPRAT_GetAnimationFromName(const SPRAT_Sheet *sheet, const char *name);
 
@@ -755,6 +770,7 @@ extern SDL_DECLSPEC const SPRAT_Animation * SDLCALL SPRAT_GetAnimationFromName(c
  *
  * \sa SPRAT_SetAnimation
  * \sa SPRAT_UpdateAnimation
+ * \anchor SPRAT_InitAnimationPlayer
  */
 extern SDL_DECLSPEC void SDLCALL SPRAT_InitAnimationPlayer(SPRAT_AnimationPlayer *player, const SPRAT_Animation *animation);
 
@@ -787,6 +803,7 @@ extern SDL_DECLSPEC void SDLCALL SPRAT_InitAnimationPlayer(SPRAT_AnimationPlayer
  * \sa SPRAT_InitAnimationPlayer
  * \sa SPRAT_PlayAnimation
  * \sa SPRAT_UpdateSpriteAnimation
+ * \anchor SPRAT_SetAnimation
  */
 extern SDL_DECLSPEC void SDLCALL SPRAT_SetAnimation(SPRAT_AnimationPlayer *player, const SPRAT_Animation *animation);
 
@@ -805,6 +822,7 @@ extern SDL_DECLSPEC void SDLCALL SPRAT_SetAnimation(SPRAT_AnimationPlayer *playe
  *               player no other thread uses.
  *
  * \since This function is available since sprat-sdl 0.1.0.
+ * \anchor SPRAT_UpdateAnimation
  */
 extern SDL_DECLSPEC void SDLCALL SPRAT_UpdateAnimation(SPRAT_AnimationPlayer *player, float seconds);
 
@@ -820,6 +838,7 @@ extern SDL_DECLSPEC void SDLCALL SPRAT_UpdateAnimation(SPRAT_AnimationPlayer *pl
  * \since This function is available since sprat-sdl 0.1.0.
  *
  * \sa SPRAT_StopAnimation
+ * \anchor SPRAT_PlayAnimation
  */
 extern SDL_DECLSPEC void SDLCALL SPRAT_PlayAnimation(SPRAT_AnimationPlayer *player);
 
@@ -834,6 +853,7 @@ extern SDL_DECLSPEC void SDLCALL SPRAT_PlayAnimation(SPRAT_AnimationPlayer *play
  * \since This function is available since sprat-sdl 0.1.0.
  *
  * \sa SPRAT_PlayAnimation
+ * \anchor SPRAT_StopAnimation
  */
 extern SDL_DECLSPEC void SDLCALL SPRAT_StopAnimation(SPRAT_AnimationPlayer *player);
 
@@ -848,6 +868,7 @@ extern SDL_DECLSPEC void SDLCALL SPRAT_StopAnimation(SPRAT_AnimationPlayer *play
  * \since This function is available since sprat-sdl 0.1.0.
  *
  * \sa SPRAT_ResumeAnimation
+ * \anchor SPRAT_PauseAnimation
  */
 extern SDL_DECLSPEC void SDLCALL SPRAT_PauseAnimation(SPRAT_AnimationPlayer *player);
 
@@ -862,6 +883,7 @@ extern SDL_DECLSPEC void SDLCALL SPRAT_PauseAnimation(SPRAT_AnimationPlayer *pla
  * \since This function is available since sprat-sdl 0.1.0.
  *
  * \sa SPRAT_PauseAnimation
+ * \anchor SPRAT_ResumeAnimation
  */
 extern SDL_DECLSPEC void SDLCALL SPRAT_ResumeAnimation(SPRAT_AnimationPlayer *player);
 
@@ -876,6 +898,7 @@ extern SDL_DECLSPEC void SDLCALL SPRAT_ResumeAnimation(SPRAT_AnimationPlayer *pl
  * \threadsafety It is safe to call this function from any thread.
  *
  * \since This function is available since sprat-sdl 0.1.0.
+ * \anchor SPRAT_IsAnimationFinished
  */
 extern SDL_DECLSPEC bool SDLCALL SPRAT_IsAnimationFinished(const SPRAT_AnimationPlayer *player);
 
@@ -893,6 +916,7 @@ extern SDL_DECLSPEC bool SDLCALL SPRAT_IsAnimationFinished(const SPRAT_Animation
  * \threadsafety It is safe to call this function from any thread.
  *
  * \since This function is available since sprat-sdl 0.1.0.
+ * \anchor SPRAT_GetAnimationFrame
  */
 extern SDL_DECLSPEC int SDLCALL SPRAT_GetAnimationFrame(const SPRAT_AnimationPlayer *player);
 
@@ -916,6 +940,7 @@ extern SDL_DECLSPEC int SDLCALL SPRAT_GetAnimationFrame(const SPRAT_AnimationPla
  *
  * \sa SPRAT_UpdateSpriteAnimation
  * \sa SPRAT_GetAnimationFrame
+ * \anchor SPRAT_SetSpriteAnimationFrame
  */
 extern SDL_DECLSPEC void SDLCALL SPRAT_SetSpriteAnimationFrame(SPRAT_Sprite *sprite, const SPRAT_AnimationPlayer *player);
 
@@ -939,6 +964,7 @@ extern SDL_DECLSPEC void SDLCALL SPRAT_SetSpriteAnimationFrame(SPRAT_Sprite *spr
  * \sa SPRAT_SetAnimation
  * \sa SPRAT_SetSpriteAnimationFrame
  * \sa SPRAT_UpdateAnimation
+ * \anchor SPRAT_UpdateSpriteAnimation
  */
 extern SDL_DECLSPEC void SDLCALL SPRAT_UpdateSpriteAnimation(SPRAT_Sprite *sprite, SPRAT_AnimationPlayer *player, float seconds);
 
@@ -963,6 +989,7 @@ extern SDL_DECLSPEC void SDLCALL SPRAT_UpdateSpriteAnimation(SPRAT_Sprite *sprit
  * \since This function is available since sprat-sdl 0.1.0.
  *
  * \sa SPRAT_RenderAnimationRotated
+ * \anchor SPRAT_RenderAnimation
  */
 extern SDL_DECLSPEC bool SDLCALL SPRAT_RenderAnimation(SDL_Renderer *renderer, const SPRAT_Sheet *sheet, const SPRAT_AnimationPlayer *player, float x, float y);
 
@@ -993,6 +1020,7 @@ extern SDL_DECLSPEC bool SDLCALL SPRAT_RenderAnimation(SDL_Renderer *renderer, c
  *
  * \sa SPRAT_RenderAnimation
  * \sa SPRAT_RenderSprite
+ * \anchor SPRAT_RenderAnimationRotated
  */
 extern SDL_DECLSPEC bool SDLCALL SPRAT_RenderAnimationRotated(SDL_Renderer *renderer, const SPRAT_Sheet *sheet, const SPRAT_AnimationPlayer *player,
                                                               float x, float y, float scale_x, float scale_y, double angle, SDL_FlipMode flip);
@@ -1014,6 +1042,7 @@ extern SDL_DECLSPEC bool SDLCALL SPRAT_RenderAnimationRotated(SDL_Renderer *rend
  * \since This function is available since sprat-sdl 0.6.0.
  *
  * \sa SPRAT_DestroyPuppet
+ * \anchor SPRAT_CreatePuppet
  */
 extern SDL_DECLSPEC SPRAT_Puppet * SDLCALL SPRAT_CreatePuppet(const SPRAT_Sheet *sheet, const char *name);
 
@@ -1027,6 +1056,7 @@ extern SDL_DECLSPEC SPRAT_Puppet * SDLCALL SPRAT_CreatePuppet(const SPRAT_Sheet 
  * \since This function is available since sprat-sdl 0.6.0.
  *
  * \sa SPRAT_CreatePuppet
+ * \anchor SPRAT_DestroyPuppet
  */
 extern SDL_DECLSPEC void SDLCALL SPRAT_DestroyPuppet(SPRAT_Puppet *puppet);
 
@@ -1043,6 +1073,7 @@ extern SDL_DECLSPEC void SDLCALL SPRAT_DestroyPuppet(SPRAT_Puppet *puppet);
  * \since This function is available since sprat-sdl 0.6.0.
  *
  * \sa SPRAT_GetPuppetPartSprite
+ * \anchor SPRAT_GetPuppetPartFromName
  */
 extern SDL_DECLSPEC int SDLCALL SPRAT_GetPuppetPartFromName(const SPRAT_Puppet *puppet, const char *name);
 
@@ -1059,6 +1090,7 @@ extern SDL_DECLSPEC int SDLCALL SPRAT_GetPuppetPartFromName(const SPRAT_Puppet *
  * \since This function is available since sprat-sdl 0.6.0.
  *
  * \sa SPRAT_ApplyPuppetPose
+ * \anchor SPRAT_GetPuppetPoseFromName
  */
 extern SDL_DECLSPEC int SDLCALL SPRAT_GetPuppetPoseFromName(const SPRAT_Puppet *puppet, const char *name);
 
@@ -1075,6 +1107,7 @@ extern SDL_DECLSPEC int SDLCALL SPRAT_GetPuppetPoseFromName(const SPRAT_Puppet *
  * \since This function is available since sprat-sdl 0.6.0.
  *
  * \sa SPRAT_ApplyPuppetSequence
+ * \anchor SPRAT_GetPuppetSequenceFromName
  */
 extern SDL_DECLSPEC int SDLCALL SPRAT_GetPuppetSequenceFromName(const SPRAT_Puppet *puppet, const char *name);
 
@@ -1091,6 +1124,7 @@ extern SDL_DECLSPEC int SDLCALL SPRAT_GetPuppetSequenceFromName(const SPRAT_Pupp
  *
  * \sa SPRAT_ApplyPuppetPose
  * \sa SPRAT_ApplyPuppetSequence
+ * \anchor SPRAT_ResetPuppetPose
  */
 extern SDL_DECLSPEC bool SDLCALL SPRAT_ResetPuppetPose(SPRAT_Puppet *puppet);
 
@@ -1107,6 +1141,7 @@ extern SDL_DECLSPEC bool SDLCALL SPRAT_ResetPuppetPose(SPRAT_Puppet *puppet);
  * \since This function is available since sprat-sdl 0.6.0.
  *
  * \sa SPRAT_GetPuppetPoseFromName
+ * \anchor SPRAT_ApplyPuppetPose
  */
 extern SDL_DECLSPEC bool SDLCALL SPRAT_ApplyPuppetPose(SPRAT_Puppet *puppet, int pose);
 
@@ -1133,6 +1168,7 @@ extern SDL_DECLSPEC bool SDLCALL SPRAT_ApplyPuppetPose(SPRAT_Puppet *puppet, int
  *
  * \sa SPRAT_GetPuppetSequenceFromName
  * \sa SPRAT_IsPuppetSequenceFinished
+ * \anchor SPRAT_ApplyPuppetSequence
  */
 extern SDL_DECLSPEC bool SDLCALL SPRAT_ApplyPuppetSequence(SPRAT_Puppet *puppet, int sequence, float seconds);
 
@@ -1148,6 +1184,7 @@ extern SDL_DECLSPEC bool SDLCALL SPRAT_ApplyPuppetSequence(SPRAT_Puppet *puppet,
  * \threadsafety It is safe to call this function from any thread.
  *
  * \since This function is available since sprat-sdl 0.6.0.
+ * \anchor SPRAT_GetPuppetSequenceDuration
  */
 extern SDL_DECLSPEC float SDLCALL SPRAT_GetPuppetSequenceDuration(const SPRAT_Puppet *puppet, int sequence);
 
@@ -1162,6 +1199,7 @@ extern SDL_DECLSPEC float SDLCALL SPRAT_GetPuppetSequenceDuration(const SPRAT_Pu
  * \threadsafety It is safe to call this function from any thread.
  *
  * \since This function is available since sprat-sdl 0.6.0.
+ * \anchor SPRAT_IsPuppetSequenceFinished
  */
 extern SDL_DECLSPEC bool SDLCALL SPRAT_IsPuppetSequenceFinished(const SPRAT_Puppet *puppet, int sequence, float seconds);
 
@@ -1177,6 +1215,7 @@ extern SDL_DECLSPEC bool SDLCALL SPRAT_IsPuppetSequenceFinished(const SPRAT_Pupp
  * \threadsafety Don't use the same puppet from several threads at once.
  *
  * \since This function is available since sprat-sdl 0.6.0.
+ * \anchor SPRAT_UpdatePuppet
  */
 extern SDL_DECLSPEC void SDLCALL SPRAT_UpdatePuppet(SPRAT_Puppet *puppet, float seconds);
 
@@ -1200,6 +1239,7 @@ extern SDL_DECLSPEC void SDLCALL SPRAT_UpdatePuppet(SPRAT_Puppet *puppet, float 
  * \since This function is available since sprat-sdl 0.6.0.
  *
  * \sa SPRAT_GetPuppetPartColor
+ * \anchor SPRAT_GetPuppetPartSprite
  */
 extern SDL_DECLSPEC bool SDLCALL SPRAT_GetPuppetPartSprite(SPRAT_Puppet *puppet, int part, SPRAT_Sprite *sprite);
 
@@ -1214,9 +1254,10 @@ extern SDL_DECLSPEC bool SDLCALL SPRAT_GetPuppetPartSprite(SPRAT_Puppet *puppet,
  * \returns true on success or false on failure; call SDL_GetError() for more
  *          information.
  *
- * \threadsafety It is safe to call this function from any thread.
+ * \threadsafety Don't use the same puppet from several threads at once.
  *
  * \since This function is available since sprat-sdl 0.6.0.
+ * \anchor SPRAT_GetPuppetPartColor
  */
 extern SDL_DECLSPEC bool SDLCALL SPRAT_GetPuppetPartColor(const SPRAT_Puppet *puppet, int part, SDL_FColor *color);
 
@@ -1236,6 +1277,7 @@ extern SDL_DECLSPEC bool SDLCALL SPRAT_GetPuppetPartColor(const SPRAT_Puppet *pu
  * \since This function is available since sprat-sdl 0.6.0.
  *
  * \sa SPRAT_GetPuppetPartSprite
+ * \anchor SPRAT_RenderPuppet
  */
 extern SDL_DECLSPEC bool SDLCALL SPRAT_RenderPuppet(SDL_Renderer *renderer, SPRAT_Puppet *puppet);
 

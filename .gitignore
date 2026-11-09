@@ -58,3 +58,6 @@ dkms.conf
 build*/
 compile_commands.json
 .cache/
+
+# Generated API pages
+docs/api/
